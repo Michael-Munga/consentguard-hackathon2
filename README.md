@@ -1,6 +1,6 @@
 # ConsentGuard — Beneficiary Consent & Privacy Fabric
 
-[![CI](https://github.com/Michael-Munga/consentguard/actions/workflows/ci.yml/badge.svg)](https://github.com/Michael-Munga/consentguard/actions/workflows/ci.yml)
+[![CI](https://github.com/Michael-Munga/consentguard-hackathon2/actions/workflows/ci.yml/badge.svg)](https://github.com/Michael-Munga/consentguard-hackathon2/actions/workflows/ci.yml)
 
 ### KPC Inuka Fellowship Hackathon 2 — Stage 2 Deliverable
 **Domain 5: Data Governance, Security & Compliance**  
