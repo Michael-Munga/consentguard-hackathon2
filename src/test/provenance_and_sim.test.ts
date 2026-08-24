@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
 import Database from 'better-sqlite3';
-import { DbRepository, getDatabase } from '../server/db/database.js';
+import { DbRepository, getDatabase, closeDatabase } from '../server/db/database.js';
+import { sseManager } from '../server/api/sse.js';
 import { runFullProvenanceAudit, getLatestProvenanceReport } from '../server/engine/provenance.js';
 import { RealtimeEventSimulator } from '../server/engine/simulator.js';
 import { seedDatabase } from '../server/db/seed.js';
@@ -14,6 +15,11 @@ describe('Engine Integration: Provenance and Simulator Modules', () => {
     seedDatabase(50);
     db = getDatabase();
     repo = new DbRepository(db);
+  });
+
+  afterAll(() => {
+    sseManager.destroy();
+    closeDatabase();
   });
 
   describe('Provenance Report Audit Engine', () => {
