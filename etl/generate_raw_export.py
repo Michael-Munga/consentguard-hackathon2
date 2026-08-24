@@ -287,6 +287,8 @@ def generate_synthetic_raw_export(num_rows: int = 5200, output_path: str = None)
         os.makedirs(raw_dir, exist_ok=True)
         output_path = os.path.join(raw_dir, f"inuka_beneficiary_export_{today_str}.csv")
         
+    if os.path.dirname(output_path):
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
     df.to_csv(output_path, index=False)
     print(f"[Generator] Synthetic raw export created at: {output_path} ({len(df)} rows total)")
     print(f"  - Clean baseline rows: {len(df) - 10}")

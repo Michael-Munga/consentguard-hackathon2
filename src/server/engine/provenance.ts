@@ -172,10 +172,12 @@ export function runFullProvenanceAudit(repo: DbRepository, customRunId?: string)
   );
 
   // Write latest report to disk
+  fs.mkdirSync(path.dirname(LATEST_REPORT_PATH), { recursive: true });
   fs.writeFileSync(LATEST_REPORT_PATH, JSON.stringify(report, null, 2), 'utf-8');
 
   // Also write run-specific report
   const historicalPath = path.join(PROVENANCE_DIR, `${runId}.json`);
+  fs.mkdirSync(path.dirname(historicalPath), { recursive: true });
   fs.writeFileSync(historicalPath, JSON.stringify(report, null, 2), 'utf-8');
 
   return report;
