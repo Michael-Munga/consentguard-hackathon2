@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  node-build-test:
+    name: Node.js Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      # Check out repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Set up Node.js 20 LTS (provides stable node-gyp toolchain for native modules)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      # Install npm packages; fails loudly if better-sqlite3 native compilation fails
+      - name: Install dependencies
+        run: npm install
+
+      # Compile client assets and verify TypeScript / Vite build cleanly
+      - name: Build project
+        run: npm run build
+
+      # Execute Vitest test suite and generate v8 coverage report
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      # Upload coverage artifacts (HTML & JSON reports)
+      - name: Upload test coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+
+  python-etl-pipeline:
+    name: Python ETL Pipeline Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      # Check out repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Set up Python 3.11 environment with pip caching
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'etl/requirements.txt'
+
+      # Install pandas, Great Expectations, and pipeline dependencies
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r etl/requirements.txt
+
+      # Generate a synthetic sample CSV with deliberate defects to exercise validation rules
+      - name: Generate synthetic raw sample export
+        run: python3 etl/generate_raw_export.py --count 100 --output etl/raw_data/ci_sample.csv
+
+      # Run ETL pipeline in initial ingestion mode against sample CSV
+      - name: Run ETL batch pipeline (initial mode)
+        run: python3 etl/pipeline.py --mode initial --file etl/raw_data/ci_sample.csv
+
+      # Confirm Great Expectations validation produced the required provenance audit certificate
+      - name: Verify provenance report generation
+        run: |
+          if [ ! -f data/provenance/etl_run_report.json ]; then
+            echo "Error: Provenance report data/provenance/etl_run_report.json not found!"
+            exit 1
+          fi
+          echo "Provenance report successfully verified at data/provenance/etl_run_report.json"
+
+      # Upload generated ETL provenance certificate for audit verification
+      - name: Upload ETL provenance report
+        uses: actions/upload-artifact@v4
+        with:
+          name: etl-provenance-report
+          path: data/provenance/
