@@ -11,10 +11,18 @@ describe('Engine Integration: Provenance and Simulator Modules', () => {
   let repo: DbRepository;
 
   beforeEach(() => {
-    // Run seed to ensure fresh realistic data in DB
-    seedDatabase(50);
-    db = getDatabase();
+    // Run seed to ensure fresh realistic data in in-memory DB
+    db = getDatabase(':memory:');
     repo = new DbRepository(db);
+    seedDatabase(50, db);
+  });
+
+  afterEach(() => {
+    if (db) {
+      try {
+        db.close();
+      } catch {}
+    }
   });
 
   afterAll(() => {

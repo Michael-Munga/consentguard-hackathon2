@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3';
 import { getDatabase, closeDatabase, DbRepository } from './database.js';
 import type {
   Beneficiary,
@@ -113,8 +114,8 @@ function formatDate(d: Date): string {
   return d.toISOString();
 }
 
-export function seedDatabase(count = 5200): void {
-  const db = getDatabase();
+export function seedDatabase(count = 5200, customDb?: Database.Database): void {
+  const db = customDb || getDatabase();
   const repo = new DbRepository(db);
 
   console.log(`[Seed] Purging existing database tables...`);

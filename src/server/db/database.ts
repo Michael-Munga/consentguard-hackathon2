@@ -29,14 +29,18 @@ export function getDatabase(customPath?: string): Database.Database {
   }
 
   const targetPath = customPath || DB_PATH;
-  const targetDir = path.dirname(targetPath);
 
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
+  if (customPath !== ':memory:') {
+    const targetDir = path.dirname(targetPath);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
   }
 
   const db = new Database(targetPath);
-  db.pragma('journal_mode = WAL');
+  if (customPath !== ':memory:') {
+    db.pragma('journal_mode = WAL');
+  }
   db.pragma('foreign_keys = ON');
 
   // Initialize schema
