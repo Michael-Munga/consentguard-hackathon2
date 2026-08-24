@@ -16,16 +16,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Set up Node.js 20 LTS (provides stable node-gyp toolchain for native modules)
+      # Set up Node.js 22 (provides stable node-gyp toolchain for native modules)
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       # Install npm packages; fails loudly if better-sqlite3 native compilation fails
       - name: Install dependencies
         run: npm install
+
+      # Rebuild native modules against runner environment to prevent worker crashes
+      - name: Rebuild native modules from source
+        run: npm rebuild better-sqlite3 --build-from-source
 
       # Compile client assets and verify TypeScript / Vite build cleanly
       - name: Build project
