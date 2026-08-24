@@ -31,9 +31,14 @@ jobs:
       - name: Build project
         run: npm run build
 
-      # Execute Vitest test suite and generate v8 coverage report
-      - name: Run tests with coverage
+      # Run the test suite to determine pass/fail status
+      - name: Run test suite
+        run: npm run test
+
+      # Generate v8 coverage report artifact (continue-on-error prevents native module instrumentation crashes from failing CI)
+      - name: Generate coverage report
         run: npm run test:coverage
+        continue-on-error: true
 
       # Upload coverage artifacts (HTML & JSON reports)
       - name: Upload test coverage report
