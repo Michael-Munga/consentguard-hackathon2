@@ -8,3 +8,7 @@ etl/logs/
 etl/raw_data/
 .env
 *.log
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/provenance/*.json
