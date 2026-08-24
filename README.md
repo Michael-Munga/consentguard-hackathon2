@@ -126,7 +126,7 @@ In a live production deployment at the KPC Inuka Foundation, the reconciliation 
 
 ---
 
-## 3. Real-Time Streaming Architecture & Engineering Trade-Offs
+## 6. Real-Time Streaming Architecture & Engineering Trade-Offs
 
 ### Deliberate Architecture Decision: Server-Sent Events (SSE) vs. Heavy Message Brokers
 In evaluating the Stage 2 data streaming requirement, we made a deliberate, principled engineering choice:
@@ -138,7 +138,7 @@ In evaluating the Stage 2 data streaming requirement, we made a deliberate, prin
 
 ---
 
-## 4. System Architecture & Features
+## 7. System Architecture & Features
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -193,7 +193,7 @@ In evaluating the Stage 2 data streaming requirement, we made a deliberate, prin
 
 ---
 
-## 5. Getting Started (Single-Command Run)
+## 8. Getting Started (Single-Command Run)
 
 ### Prerequisites
 - Node.js (v18.0.0 or higher)
@@ -220,7 +220,7 @@ Once started, open your browser at:
 
 ---
 
-## 6. Interactive Feature Walkthrough & Verification Guide
+## 9. Interactive Feature Walkthrough & Verification Guide
 
 Follow these steps to explore and verify ConsentGuard's core operational capabilities:
 1. **Observe the Live Activity Feed**: Watch real-time synthetic beneficiary intakes, lifecycle milestones, and consent authorizations streaming over SSE every 2.5 seconds.
@@ -235,7 +235,7 @@ Follow these steps to explore and verify ConsentGuard's core operational capabil
 
 ---
 
-## 7. Test Suite & QA Evidence
+## 10. Test Suite & QA Evidence
 
 ConsentGuard includes a full Vitest test suite validating all 6 core governance algorithms:
 ```bash
@@ -251,7 +251,7 @@ npm run test:coverage
 
 ---
 
-## 8. License & Fellowship Attribution
+## 11. License & Fellowship Attribution
 
 Built for the **KPC Inuka Fellowship Hackathon 2 (Stage 2)** by the ConsentGuard Engineering Team.  
 Conforms with the **Kenya Data Protection Act (KDPA) 2019** and the KPC Inuka Foundation Data Governance Charter.
