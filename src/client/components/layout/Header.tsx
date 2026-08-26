@@ -199,7 +199,7 @@ export const Header: React.FC<HeaderProps> = ({
                         Simulated Anomaly Triggers (6)
                       </span>
                       <span className="text-[10px] font-mono text-[#58595b] dark:text-[#cdc4c5]">
-                        Write-Time & ML Gates
+                        Write-Time & Governance Gates
                       </span>
                     </div>
 
@@ -325,12 +325,12 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                       </button>
 
-                      {/* 5. Abnormal Access Volume (AI Outlier) */}
+                      {/* 5. Abnormal Access Volume (Behavioral Outlier) */}
                       <button
                         onClick={() =>
                           handleAction(
                             () => simulateBehavioralOutlier(),
-                            'Simulated: AI Behavioral Outlier detected & flagged!'
+                            'Simulated: Behavioral Outlier detected & flagged!'
                           )
                         }
                         disabled={isTriggeringDemo}
@@ -345,11 +345,11 @@ export const Header: React.FC<HeaderProps> = ({
                               Simulate: Abnormal Access Volume
                             </span>
                             <span className="text-[10px] font-mono bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 px-1.5 py-0.2 rounded border border-purple-200 dark:border-purple-900/50">
-                              ML +6.2σ
+                              Z-Score +6.2σ
                             </span>
                           </div>
                           <p className="text-[11px] text-[#58595b] dark:text-[#cdc4c5] mt-0.5">
-                            Unsupervised AI access scorer flags actor surge above statistical baseline
+                            Statistical access scorer flags actor surge above behavioral baseline
                           </p>
                         </div>
                       </button>

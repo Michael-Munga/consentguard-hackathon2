@@ -257,7 +257,7 @@ export const LiveActivityFeed: React.FC<LiveActivityFeedProps> = ({
           {baseBadge}
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
             <Sparkles className="w-2.5 h-2.5" />
-            ML Outlier
+            Behavioral Outlier
           </span>
           {mlThreatScore && (
             <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200 border border-purple-200 dark:border-purple-800">
@@ -291,7 +291,7 @@ export const LiveActivityFeed: React.FC<LiveActivityFeedProps> = ({
         </div>
       </div>
 
-      {/* AI Privacy Intelligence & ML Engine Telemetry Bar */}
+      {/* KDPA Privacy Protection & Demographic Linkage Shield Bar */}
       <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-900/10 via-indigo-900/5 to-emerald-900/10 dark:from-purple-950/40 dark:via-indigo-950/20 dark:to-emerald-950/30 border border-purple-200/80 dark:border-purple-800/40 shadow-sm space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -300,13 +300,13 @@ export const LiveActivityFeed: React.FC<LiveActivityFeedProps> = ({
             </div>
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-[#191c1e] dark:text-white flex items-center gap-1.5">
-                <span>Real-Time Privacy Intelligence & ML Threat Fabric</span>
+                <span>KDPA Privacy Protection & Demographic Linkage Shield</span>
                 <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
-                  Online
+                  Active
                 </span>
               </h3>
               <p className="text-[11px] text-[#58595b] dark:text-[#cdc4c5]">
-                Continuous demographic $k$-anonymity monitoring & statistical behavioral anomaly detection
+                Continuous demographic k-Anonymity monitoring & statistical behavioral anomaly detection
               </p>
             </div>
           </div>
@@ -314,7 +314,7 @@ export const LiveActivityFeed: React.FC<LiveActivityFeedProps> = ({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
               <ShieldCheck className="w-3.5 h-3.5" />
-              {privacyAssessment?.kAnonymityScore ?? 98.4}% $k$-Safe ($k \ge 3$)
+              {privacyAssessment?.kAnonymityScore ?? 98.4}% k-Safe (k ≥ 3)
             </span>
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
               <Activity className="w-3.5 h-3.5" />

@@ -25,7 +25,126 @@ interface AuditLogDiffModalProps {
   onClose: () => void;
 }
 
+const formatKeyLabel = (key: string) => {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const renderFormattedValue = (key: string, val: any) => {
+  if (val === null || val === undefined) {
+    return <span className="text-[#58595b] dark:text-[#cdc4c5] italic">None</span>;
+  }
+  if (typeof val === 'boolean') {
+    return (
+      <span
+        className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+          val
+            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+            : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 border border-red-200 dark:border-red-800'
+        }`}
+      >
+        {val ? 'TRUE / ALLOWED' : 'FALSE / BLOCKED'}
+      </span>
+    );
+  }
+  if (typeof val === 'object') {
+    return <span className="font-mono text-[11px] break-all">{JSON.stringify(val)}</span>;
+  }
+  const str = String(val);
+  const upper = str.toUpperCase();
+
+  if (upper.includes('BLOCKED') || upper.includes('CRITICAL') || upper.includes('REVOKED')) {
+    return (
+      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 border border-red-200 dark:border-red-800 inline-flex items-center gap-1">
+        {str.replace(/_/g, ' ')}
+      </span>
+    );
+  }
+  if (upper === 'GRANTED' || upper === 'ACTIVE' || upper === 'SUCCESS' || upper === 'ALLOW') {
+    return (
+      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 inline-flex items-center gap-1">
+        {str.replace(/_/g, ' ')}
+      </span>
+    );
+  }
+  if (upper === 'REQUESTED' || upper === 'PENDING') {
+    return (
+      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+        {str.replace(/_/g, ' ')}
+      </span>
+    );
+  }
+  if (key.includes('purpose') || str === 'donor_reporting' || str === 'internal_analytics' || str === 'third_party_sharing') {
+    return (
+      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-50 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+        {str.replace(/_/g, ' ')}
+      </span>
+    );
+  }
+  if (key.includes('email') || key.includes('attempted_by') || str.includes('@')) {
+    return (
+      <span className="font-mono text-[11px] font-bold text-[#191c1e] dark:text-[#f0f1f3] break-all bg-[#edeef0] dark:bg-[#2e2a2b] px-2 py-0.5 rounded">
+        {str}
+      </span>
+    );
+  }
+  return <span className="font-mono text-[11px] text-[#191c1e] dark:text-[#f0f1f3] break-all font-semibold">{str}</span>;
+};
+
+const StatePayloadViewer: React.FC<{
+  data: any;
+  nullLabel: string;
+  isAfter?: boolean;
+  viewMode: 'formatted' | 'raw';
+}> = ({ data, nullLabel, isAfter, viewMode }) => {
+  if (!data) {
+    return (
+      <div className="p-4 bg-[#f8f9fb] dark:bg-[#121011] rounded-xl border border-dashed border-[#e2e4e9] dark:border-[#3a3839] text-[#58595b] dark:text-[#cdc4c5] italic text-xs min-h-[140px] flex items-center justify-center">
+        {nullLabel}
+      </div>
+    );
+  }
+
+  if (viewMode === 'raw' || typeof data !== 'object') {
+    return (
+      <div className="bg-[#f8f9fb] dark:bg-[#121011] p-3.5 rounded-xl border border-[#e2e4e9] dark:border-[#3a3839] font-mono text-[11px] overflow-x-auto min-h-[140px]">
+        <pre className={`${isAfter ? 'text-emerald-700 dark:text-emerald-300' : 'text-[#191c1e] dark:text-[#e2e4e9]'} whitespace-pre-wrap`}>
+          {typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data)}
+        </pre>
+      </div>
+    );
+  }
+
+  const entries = Object.entries(data);
+  return (
+    <div
+      className={`p-3.5 rounded-xl border min-h-[140px] space-y-2 font-mono ${
+        isAfter
+          ? 'bg-emerald-50/30 dark:bg-emerald-950/20 border-emerald-200/70 dark:border-emerald-800/40'
+          : 'bg-[#f8f9fb] dark:bg-[#121011] border-[#e2e4e9] dark:border-[#3a3839]'
+      }`}
+    >
+      {entries.map(([key, val]) => (
+        <div
+          key={key}
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 py-1.5 border-b border-black/5 dark:border-white/5 last:border-0"
+        >
+          <span className="text-[10px] font-mono uppercase tracking-wider text-[#58595b] dark:text-[#cdc4c5] font-bold shrink-0">
+            {formatKeyLabel(key)}
+          </span>
+          <div className="text-left sm:text-right">
+            {renderFormattedValue(key, val)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export const AuditLogDiffModal: React.FC<AuditLogDiffModalProps> = ({ isOpen, log, onClose }) => {
+  const [viewMode, setViewMode] = useState<'formatted' | 'raw'>('formatted');
+
   if (!isOpen || !log) return null;
 
   const parseJson = (str: string | null) => {
@@ -51,7 +170,7 @@ export const AuditLogDiffModal: React.FC<AuditLogDiffModalProps> = ({ isOpen, lo
             </div>
             <div>
               <h3 className="text-base font-bold text-[#191c1e] dark:text-white flex items-center gap-2">
-                <span>Audit Ledger Proof: {log.action}</span>
+                <span>Audit Ledger Proof: {log.action.replace(/_/g, ' ')}</span>
               </h3>
               <p className="text-xs font-mono text-[#58595b] dark:text-[#cdc4c5]">
                 ID: {log.id} • Entity: {log.entity_type} ({log.entity_id})
@@ -87,36 +206,58 @@ export const AuditLogDiffModal: React.FC<AuditLogDiffModalProps> = ({ isOpen, lo
             </div>
           </div>
 
+          {/* View Mode Toggle */}
+          <div className="flex items-center justify-between pt-2 border-t border-[#e2e4e9] dark:border-[#3a3839]">
+            <span className="text-[11px] font-mono font-bold uppercase text-[#58595b] dark:text-[#cdc4c5]">
+              State Transition Audit
+            </span>
+            <div className="inline-flex rounded-lg border border-[#e2e4e9] dark:border-[#3a3839] p-0.5 bg-[#f8f9fb] dark:bg-[#121011]">
+              <button
+                onClick={() => setViewMode('formatted')}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-bold transition-colors cursor-pointer ${
+                  viewMode === 'formatted'
+                    ? 'bg-white dark:bg-[#231f20] text-[#191c1e] dark:text-white shadow-xs'
+                    : 'text-[#58595b] dark:text-[#cdc4c5] hover:text-[#191c1e]'
+                }`}
+              >
+                Formatted View
+              </button>
+              <button
+                onClick={() => setViewMode('raw')}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-bold transition-colors cursor-pointer ${
+                  viewMode === 'raw'
+                    ? 'bg-white dark:bg-[#231f20] text-[#191c1e] dark:text-white shadow-xs'
+                    : 'text-[#58595b] dark:text-[#cdc4c5] hover:text-[#191c1e]'
+                }`}
+              >
+                Raw Cryptographic JSON
+              </button>
+            </div>
+          </div>
+
           {/* Before & After State Diff */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <span className="text-[11px] font-mono font-bold text-[#58595b] dark:text-[#cdc4c5] block mb-1.5">
                 Before State (Prior)
               </span>
-              <div className="bg-[#f8f9fb] dark:bg-[#121011] p-3.5 rounded-xl border border-[#e2e4e9] dark:border-[#3a3839] font-mono text-[11px] overflow-x-auto min-h-[140px]">
-                {beforeJson ? (
-                  <pre className="text-[#191c1e] dark:text-[#e2e4e9] whitespace-pre-wrap">
-                    {typeof beforeJson === 'object' ? JSON.stringify(beforeJson, null, 2) : beforeJson}
-                  </pre>
-                ) : (
-                  <span className="text-[#58595b] italic">null (Initial Creation / Genesis)</span>
-                )}
-              </div>
+              <StatePayloadViewer
+                data={beforeJson}
+                nullLabel="Initial Creation / Genesis"
+                viewMode={viewMode}
+              />
             </div>
 
             <div>
               <span className="text-[11px] font-mono font-bold text-[#58595b] dark:text-[#cdc4c5] block mb-1.5">
                 After State (Mutated)
               </span>
-              <div className="bg-[#f8f9fb] dark:bg-[#121011] p-3.5 rounded-xl border border-[#e2e4e9] dark:border-[#3a3839] font-mono text-[11px] overflow-x-auto min-h-[140px]">
-                {afterJson ? (
-                  <pre className="text-emerald-700 dark:text-emerald-300 whitespace-pre-wrap">
-                    {typeof afterJson === 'object' ? JSON.stringify(afterJson, null, 2) : afterJson}
-                  </pre>
-                ) : (
-                  <span className="text-[#58595b] italic">null (Deleted / Purged)</span>
-                )}
-              </div>
+              <StatePayloadViewer
+                data={afterJson}
+                nullLabel="Deleted / Purged"
+                isAfter={true}
+                viewMode={viewMode}
+              />
             </div>
           </div>
         </div>

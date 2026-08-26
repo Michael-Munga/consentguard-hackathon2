@@ -248,7 +248,7 @@ export const AnomalyLog: React.FC = () => {
                               {isMlOutlier && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                                   <Sparkles className="w-2.5 h-2.5" />
-                                  ML Outlier
+                                  Behavioral Outlier
                                 </span>
                               )}
                             </div>

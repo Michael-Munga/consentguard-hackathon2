@@ -117,7 +117,7 @@ export const AnomalyDetailModal: React.FC<AnomalyDetailModalProps> = ({
                 {isMlOutlier && (
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold border inline-flex items-center gap-1 bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200 dark:border-purple-800">
                     <Sparkles className="w-3 h-3" />
-                    ML Outlier
+                    Behavioral Outlier
                   </span>
                 )}
 
@@ -205,7 +205,7 @@ export const AnomalyDetailModal: React.FC<AnomalyDetailModalProps> = ({
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2 text-purple-900 dark:text-purple-200 font-bold">
                   <Activity className="w-4 h-4 text-purple-600" />
-                  <span>Unsupervised ML Access Threat Index</span>
+                  <span>Behavioral Access Threat Index (Adaptive Baseline)</span>
                 </div>
                 <span className="font-extrabold text-sm text-purple-700 dark:text-purple-300">
                   {threatScore} / 100

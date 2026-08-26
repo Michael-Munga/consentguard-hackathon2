@@ -185,15 +185,15 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ onSelectTab, onOpenBeneficia
         </div>
       </div>
 
-      {/* Card 5: AI Privacy Intelligence & k-Anonymity */}
+      {/* Card 5: KDPA Privacy Protection & k-Anonymity */}
       <div
         onClick={() => onSelectTab?.('exports')}
         className="bg-[#ffffff] dark:bg-[#231f20] rounded-xl border border-[#e2e4e9] dark:border-[#3a3839] p-4 flex flex-col justify-between shadow-ambient-md cursor-pointer hover:border-purple-500 transition-all group"
-        title="Click to view KDPA Linkage Risk Assessment & Exports"
+        title="Click to view KDPA Linkage Risk Assessment & Exports (Sec 25)"
       >
         <div className="flex justify-between items-start mb-2">
           <p className="font-mono text-xs text-[#58595b] dark:text-[#cdc4c5] uppercase tracking-wider">
-            AI Privacy Intelligence
+            KDPA Privacy Protection
           </p>
           <Sparkles className="w-5 h-5 text-purple-600 dark:text-purple-400" />
         </div>
