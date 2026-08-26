@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useLiveData } from '../../context/LiveDataContext.js';
 import type { Pillar, ConsentRecord, Beneficiary } from '../../../types/index.js';
+import { Pagination } from '../common/Pagination.js';
 
 export const ConsentStatusOverview: React.FC = () => {
   const { stats } = useLiveData();
@@ -15,6 +16,7 @@ export const ConsentStatusOverview: React.FC = () => {
   const [consents, setConsents] = useState<ConsentRecord[]>([]);
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [drilldownPage, setDrilldownPage] = useState(1);
   const [drilldownCell, setDrilldownCell] = useState<{
     status: string;
     pillar: Pillar | 'TOTAL';
@@ -24,7 +26,7 @@ export const ConsentStatusOverview: React.FC = () => {
   const pillars: Pillar[] = ['Scholarship', 'Plus', 'Vocational', 'Tech'];
   const statuses = [
     { key: 'granted', label: 'Granted (Active)', icon: CheckCircle2 },
-    { key: 'requested', label: 'Requested (Pending)', icon: Clock },
+    { key: 'requested', label: 'Not Yet Opted In', icon: Clock },
     { key: 'revoked', label: 'Revoked by Subject', icon: Ban },
     { key: 'expired', label: 'Expired (Retention End)', icon: AlertTriangle },
   ];
@@ -113,6 +115,7 @@ export const ConsentStatusOverview: React.FC = () => {
     });
 
     const matchingBens = beneficiaries.filter((b) => matchingBeneficiaryIds.has(b.id));
+    setDrilldownPage(1);
     setDrilldownCell({
       status: statusKey,
       pillar,
@@ -187,7 +190,7 @@ export const ConsentStatusOverview: React.FC = () => {
               <tr>
                 <th className="py-3.5 px-4 font-semibold">Pillar / Entity</th>
                 <th className="py-3.5 px-4 font-semibold text-center">Granted (Active)</th>
-                <th className="py-3.5 px-4 font-semibold text-center">Requested (Pending)</th>
+                <th className="py-3.5 px-4 font-semibold text-center">Not Yet Opted In</th>
                 <th className="py-3.5 px-4 font-semibold text-center">Revoked (Subject)</th>
                 <th className="py-3.5 px-4 font-semibold text-center">Expired (Retention)</th>
                 <th className="py-3.5 px-4 text-right font-semibold">Total Pillar Load</th>
@@ -290,7 +293,7 @@ export const ConsentStatusOverview: React.FC = () => {
               KDPA Compliance Backlog
             </h4>
             <p className="text-xs text-[#58595b] dark:text-[#cdc4c5] mt-1 leading-relaxed">
-              Pending requests undergo cryptographic key generation upon beneficiary confirmation. 0 records are shared prior to explicit opt-in execution.
+              Beneficiaries who have not yet opted in for that purpose retain full control to grant consent themselves at any time. 0 records are shared prior to explicit opt-in execution.
             </p>
           </div>
         </div>
@@ -323,7 +326,7 @@ export const ConsentStatusOverview: React.FC = () => {
                   No beneficiaries in this cohort category.
                 </div>
               ) : (
-                drilldownCell.items.slice(0, 30).map((b) => (
+                drilldownCell.items.slice((drilldownPage - 1) * 10, drilldownPage * 10).map((b) => (
                   <div key={b.id} className="py-2.5 flex items-center justify-between text-xs">
                     <div>
                       <span className="font-mono text-xs font-bold text-[#191c1e] dark:text-white mr-2">
@@ -333,14 +336,23 @@ export const ConsentStatusOverview: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[11px] text-[#58595b]">{b.county ? `${b.county}, ${b.region}` : b.region}</span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#f3f4f6] dark:bg-[#3a3839] border border-[#e2e4e9] dark:border-[#4a4849]">
-                        Stage {b.current_stage}
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#f3f4f6] dark:bg-[#3a3839] border border-[#e2e4e9] dark:border-[#4a4849] text-emerald-700 dark:text-emerald-300">
+                        KDPA Verified
                       </span>
                     </div>
                   </div>
                 ))
               )}
             </div>
+
+            {drilldownCell.items.length > 0 && (
+              <Pagination
+                currentPage={drilldownPage}
+                totalItems={drilldownCell.items.length}
+                pageSize={10}
+                onPageChange={setDrilldownPage}
+              />
+            )}
           </div>
         </div>
       )}

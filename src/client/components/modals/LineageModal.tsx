@@ -11,9 +11,9 @@ export const LineageModal: React.FC<LineageModalProps> = ({ isOpen, onClose }) =
 
   const comparisonRows = [
     {
-      domain: 'Multi-Stage Sequence Validation',
-      stage1: '7-Checkpoint Depot Sequence (gate-in → security → weigh-in → bay → load-start → load-end → weigh-out → gate-out). Validates all 7 consecutive pairs individually with named anomaly types.',
-      stage2: '6-Milestone Beneficiary Lifecycle (applied → identity_verified → consent_requested → consent_granted → data_processed → consent_reviewed). Every adjacent transition validated individually with dedicated named anomalies.',
+      domain: 'Multi-Layer Governance Gate Validation',
+      stage1: '7-Checkpoint Depot Sequence (gate-in → security → weigh-in → bay → load-start → load-end → weigh-out → gate-out). Validates operational integrity across every checkpoint.',
+      stage2: '5 KDPA Governance Gates (Entity Overlap, Real-Time Write-Time Authorization, Metadata Flagging, 2-Sigma Statistical Cohort Drift, and Cryptographic Audit Ledger). Evaluated continuously in real time.',
       linkup: 'Direct 1:1 Architectural Lineage',
     },
     {

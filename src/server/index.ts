@@ -6,7 +6,6 @@ import { fileURLToPath } from 'url';
 import apiRouter from './api/routes.js';
 import { getDatabase, DbRepository } from './db/database.js';
 import { seedDatabase } from './db/seed.js';
-import { simulator } from './engine/simulator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,23 +20,21 @@ async function startServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // Check database and auto-seed if empty
+  // Check database and auto-seed if empty or missing staff/demo accounts
   const db = getDatabase();
   const repo = new DbRepository(db);
   const existingBeneficiaries = repo.getAllBeneficiaries();
+  const existingStaff = repo.getAllStaff();
 
-  if (existingBeneficiaries.length < 5000) {
-    console.log(`[Server] Database has ${existingBeneficiaries.length} beneficiaries (target: 5000+). Running comprehensive synthetic seed...`);
+  if (existingBeneficiaries.length < 5000 || existingStaff.length === 0 || !repo.getBeneficiaryById('INK-84920')) {
+    console.log(`[Server] Initializing database with comprehensive seed data, staff accounts, and demo credentials...`);
     seedDatabase(5200);
   } else {
-    console.log(`[Server] Database ready with ${existingBeneficiaries.length} existing beneficiaries.`);
+    console.log(`[Server] Database ready with ${existingBeneficiaries.length} beneficiaries and ${existingStaff.length} staff accounts.`);
   }
 
   // Mount API router
   app.use('/api', apiRouter);
-
-  // Auto-start real-time simulation trickle
-  simulator.start();
 
   if (!isProduction) {
     // Development mode: Vite middleware with instant HMR

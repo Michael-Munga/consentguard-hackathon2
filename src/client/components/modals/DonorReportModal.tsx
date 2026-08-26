@@ -12,6 +12,8 @@ import {
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
+import { formatDateTime, REGION_COUNTIES, ALL_COUNTIES } from '../../lib/utils.js';
+import { Pagination } from '../common/Pagination.js';
 
 interface DonorReportModalProps {
   isOpen: boolean;
@@ -26,16 +28,53 @@ export const DonorReportModal: React.FC<DonorReportModalProps> = ({ isOpen, onCl
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 10;
 
+  // Filter states
+  const [selectedPillar, setSelectedPillar] = useState<string>('ALL');
+  const [selectedRegion, setSelectedRegion] = useState<string>('ALL');
+  const [selectedCounty, setSelectedCounty] = useState<string>('ALL');
+
+  // Dynamic filter options populated from response dataset
+  const [availableOptions, setAvailableOptions] = useState<{
+    pillars: string[];
+    regions: string[];
+    counties: string[];
+  }>({
+    pillars: [],
+    regions: [],
+    counties: [],
+  });
+
   useEffect(() => {
     if (!isOpen) return;
     const fetchDonorData = async () => {
       try {
         setIsLoading(true);
-        const res = await fetch('/api/donor-report');
+        const params = new URLSearchParams();
+        if (selectedPillar !== 'ALL') params.append('pillar', selectedPillar);
+        if (selectedRegion !== 'ALL') params.append('region', selectedRegion);
+        if (selectedCounty !== 'ALL') params.append('county', selectedCounty);
+
+        const query = params.toString();
+        const url = `/api/donor-report${query ? `?${query}` : ''}`;
+        const res = await fetch(url);
         if (res.ok) {
           const json = await res.json();
           setData(json);
           setCurrentPage(1);
+
+          if (json.available_filters) {
+            setAvailableOptions((prev) => ({
+              pillars: json.available_filters.pillars?.length ? json.available_filters.pillars : prev.pillars,
+              regions: json.available_filters.regions?.length ? json.available_filters.regions : prev.regions,
+              counties: json.available_filters.counties?.length ? json.available_filters.counties : prev.counties,
+            }));
+          } else if (json.records) {
+            setAvailableOptions((prev) => ({
+              pillars: Array.from(new Set([...prev.pillars, ...json.records.map((r: any) => r.pillar).filter(Boolean)])),
+              regions: Array.from(new Set([...prev.regions, ...json.records.map((r: any) => r.region).filter(Boolean)])),
+              counties: Array.from(new Set([...prev.counties, ...json.records.map((r: any) => r.county).filter(Boolean)])),
+            }));
+          }
         }
       } catch (err) {
         console.error('Failed to fetch donor report:', err);
@@ -44,9 +83,16 @@ export const DonorReportModal: React.FC<DonorReportModalProps> = ({ isOpen, onCl
       }
     };
     fetchDonorData();
-  }, [isOpen]);
+  }, [isOpen, selectedPillar, selectedRegion, selectedCounty]);
 
   if (!isOpen) return null;
+
+  const activeFilters = [];
+  if (selectedPillar !== 'ALL') activeFilters.push(`${selectedPillar} Pillar`);
+  if (selectedRegion !== 'ALL') activeFilters.push(`${selectedRegion} Region`);
+  if (selectedCounty !== 'ALL') activeFilters.push(`${selectedCounty} County`);
+  const activeFilterSummary = activeFilters.join(', ');
+  const hasActiveFilters = activeFilters.length > 0;
 
   const totalPages = Math.max(1, Math.ceil((data?.records?.length || 0) / PAGE_SIZE));
   const validPage = Math.min(currentPage, totalPages);
@@ -54,15 +100,21 @@ export const DonorReportModal: React.FC<DonorReportModalProps> = ({ isOpen, onCl
 
   const handleCopy = () => {
     if (!data) return;
-    const summary = `KDPA 2019 Section 25 Donor Export Summary:\nEligible Compliant Records: ${data.total_eligible_records}\nExcluded (No Valid Consent): ${data.excluded_unauthorized_records}\nGenerated At: ${new Date().toISOString()}`;
+    const filterInfo = hasActiveFilters
+      ? `\nActive Scope Filter: ${activeFilterSummary}`
+      : '\nActive Scope Filter: None (All Pillars, Regions & Counties)';
+    const filterExcludedInfo =
+      data.excluded_by_filter_records !== undefined
+        ? `\nExcluded (Outside Active Scope): ${data.excluded_by_filter_records}`
+        : '';
+    const summary = `KDPA 2019 Section 25 Donor Export Summary:\nEligible Compliant Records: ${data.total_eligible_records}\nExcluded (No Valid Consent): ${data.excluded_unauthorized_records}${filterExcludedInfo}${filterInfo}\nGenerated At: ${new Date().toISOString()}`;
     navigator.clipboard.writeText(summary);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = () => {
-    if (!data || !data.records || data.records.length === 0) return;
-
+  const handleDownload = (format: 'xlsx' | 'csv' = 'xlsx') => {
+    if (!data || !data.records) return;
     try {
       // Map records to clean spreadsheet columns
       const exportRows = data.records.map((r: any) => ({
@@ -71,52 +123,80 @@ export const DonorReportModal: React.FC<DonorReportModalProps> = ({ isOpen, onCl
         'Inuka Pillar': r.pillar || '',
         'Kenyan County': r.county || '',
         'Kenyan Region': r.region || '',
-        'Program Milestone': (r.program_milestone || '').replace(/_/g, ' '),
         'KDPA Consent Status': r.kdpa_consent_verified ? 'ACTIVE_VERIFIED' : 'PENDING',
         'Authorized Purpose': (r.consent_purpose || r.purpose || 'donor_reporting').replace(/_/g, ' '),
         'Retention Window': (r.retention_expiry_window || r.retention_window || '365_days').replace(/_/g, ' '),
-        'Export Timestamp': r.export_timestamp || new Date().toISOString(),
+        'Export Timestamp': formatDateTime(r.export_timestamp || new Date().toISOString()),
       }));
 
-      // Generate worksheet
-      const worksheet = XLSX.utils.json_to_sheet(exportRows);
-
-      // Set column widths for clean readability
-      worksheet['!cols'] = [
-        { wch: 28 }, // Donor Cohort ID
-        { wch: 26 }, // Masked Beneficiary Subject
-        { wch: 16 }, // Inuka Pillar
-        { wch: 18 }, // Kenyan County
-        { wch: 18 }, // Kenyan Region
-        { wch: 22 }, // Program Milestone
-        { wch: 22 }, // KDPA Consent Status
-        { wch: 22 }, // Authorized Purpose
-        { wch: 18 }, // Retention Window
-        { wch: 26 }, // Export Timestamp
-      ];
-
-      // Build workbook
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Anonymized Donor Dataset');
-
-      // Generate binary buffer & Blob
-      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([excelBuffer], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8',
-      });
-
-      // Write file with standard Inuka date naming convention
       const dateStr = new Date().toISOString().split('T')[0];
-      const filename = `Inuka_Donor_Report_${dateStr}.xlsx`;
 
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      if (format === 'csv') {
+        const headers = [
+          'Donor Cohort ID',
+          'Masked Beneficiary Subject',
+          'Inuka Pillar',
+          'Kenyan County',
+          'Kenyan Region',
+          'KDPA Consent Status',
+          'Authorized Purpose',
+          'Retention Window',
+          'Export Timestamp',
+        ];
+        const csvContent = [
+          headers.join(','),
+          ...exportRows.map((row: any) =>
+            headers.map((h) => `"${String(row[h] || '').replace(/"/g, '""')}"`).join(',')
+          ),
+        ].join('\r\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const filename = `Inuka_Donor_Report_${dateStr}.csv`;
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } else {
+        // Generate worksheet
+        const worksheet = XLSX.utils.json_to_sheet(exportRows);
+
+        // Set column widths for clean readability
+        worksheet['!cols'] = [
+          { wch: 28 }, // Donor Cohort ID
+          { wch: 26 }, // Masked Beneficiary Subject
+          { wch: 16 }, // Inuka Pillar
+          { wch: 18 }, // Kenyan County
+          { wch: 18 }, // Kenyan Region
+          { wch: 22 }, // KDPA Consent Status
+          { wch: 22 }, // Authorized Purpose
+          { wch: 18 }, // Retention Window
+          { wch: 26 }, // Export Timestamp
+        ];
+
+        // Build workbook
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Anonymized Donor Dataset');
+
+        // Generate binary buffer & Blob
+        const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([excelBuffer], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8',
+        });
+
+        const filename = `Inuka_Donor_Report_${dateStr}.xlsx`;
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }
 
       setIsDownloaded(true);
       setTimeout(() => setIsDownloaded(false), 2500);
@@ -151,23 +231,26 @@ export const DonorReportModal: React.FC<DonorReportModalProps> = ({ isOpen, onCl
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleDownload}
+              onClick={() => handleDownload('xlsx')}
               disabled={isLoading || !data || !data.records || data.records.length === 0}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
                 isDownloaded
                   ? 'bg-red-700 text-white'
                   : 'bg-[#ED1C24] hover:bg-[#C8102E] text-white'
               }`}
+              title="Download as Excel XLSX spreadsheet"
             >
-              {isDownloaded ? (
-                <>
-                  <Check className="w-3.5 h-3.5" /> Downloaded (.xlsx)
-                </>
-              ) : (
-                <>
-                  <Download className="w-3.5 h-3.5" /> Download Report (.xlsx)
-                </>
-              )}
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>{isDownloaded ? 'Downloaded (.xlsx)' : 'Download Report (.xlsx)'}</span>
+            </button>
+            <button
+              onClick={() => handleDownload('csv')}
+              disabled={isLoading || !data || !data.records || data.records.length === 0}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 bg-[#F4F5F7] dark:bg-slate-800 hover:bg-slate-200 text-[#231F20] dark:text-slate-200 border border-slate-300 dark:border-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              title="Download as comma-separated CSV text"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>CSV</span>
             </button>
             <button
               onClick={onClose}
@@ -186,6 +269,82 @@ export const DonorReportModal: React.FC<DonorReportModalProps> = ({ isOpen, onCl
             </div>
           ) : data ? (
             <>
+              {/* Filter Controls Bar */}
+              <div className="bg-[#F4F5F7] dark:bg-slate-950 p-3 rounded-xl border border-slate-300 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-[#231F20] dark:text-slate-200 shrink-0">
+                  <Filter className="w-4 h-4 text-[#ED1C24]" />
+                  <span>Dataset Scope Filters:</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 flex-1 sm:justify-end">
+                  {/* Pillar Filter */}
+                  <select
+                    value={selectedPillar}
+                    onChange={(e) => setSelectedPillar(e.target.value)}
+                    className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-[#231F20] dark:text-slate-200 py-1.5 px-2.5 focus:outline-none focus:border-[#ED1C24] cursor-pointer"
+                  >
+                    <option value="ALL">All Pillars</option>
+                    {availableOptions.pillars.map((p) => (
+                      <option key={p} value={p}>
+                        {p} Pillar
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Region Filter */}
+                  <select
+                    value={selectedRegion}
+                    onChange={(e) => {
+                      setSelectedRegion(e.target.value);
+                      setSelectedCounty('ALL');
+                    }}
+                    className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-[#231F20] dark:text-slate-200 py-1.5 px-2.5 focus:outline-none focus:border-[#ED1C24] cursor-pointer"
+                  >
+                    <option value="ALL">All Regions</option>
+                    {availableOptions.regions.map((r) => (
+                      <option key={r} value={r}>
+                        {r} Region
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* County Filter */}
+                  <select
+                    value={selectedCounty}
+                    onChange={(e) => setSelectedCounty(e.target.value)}
+                    className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-[#231F20] dark:text-slate-200 py-1.5 px-2.5 focus:outline-none focus:border-[#ED1C24] cursor-pointer"
+                  >
+                    <option value="ALL">
+                      {selectedRegion === 'ALL'
+                        ? 'All Counties (47)'
+                        : `Counties in ${selectedRegion} (${(REGION_COUNTIES[selectedRegion] || []).length})`}
+                    </option>
+                    {(selectedRegion === 'ALL'
+                      ? (availableOptions.counties.length ? availableOptions.counties : ALL_COUNTIES)
+                      : (REGION_COUNTIES[selectedRegion] || availableOptions.counties)
+                    ).map((c) => (
+                      <option key={c} value={c}>
+                        {c} County
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Reset Filters button */}
+                  {hasActiveFilters && (
+                    <button
+                      onClick={() => {
+                        setSelectedPillar('ALL');
+                        setSelectedRegion('ALL');
+                        setSelectedCounty('ALL');
+                      }}
+                      className="text-[11px] font-semibold text-[#ED1C24] hover:underline px-1.5 py-0.5 cursor-pointer"
+                    >
+                      Reset Filters
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Compliance Badges Banner */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#F4F5F7] dark:bg-slate-950 p-3.5 rounded-xl border border-slate-300 dark:border-slate-800 font-mono">
                 <div>
@@ -201,12 +360,33 @@ export const DonorReportModal: React.FC<DonorReportModalProps> = ({ isOpen, onCl
                   </span>
                 </div>
                 <div>
-                  <span className="text-[#58595B] dark:text-slate-400 block text-[10px] uppercase">PII Masking Algorithm</span>
+                  <span className="text-[#58595B] dark:text-slate-400 block text-[10px] uppercase">
+                    {hasActiveFilters ? 'Excluded (Outside Active Scope)' : 'PII Masking Algorithm'}
+                  </span>
                   <span className="font-black text-sm text-[#231F20] dark:text-white mt-0.5 block">
-                    Pseudonymized Token
+                    {hasActiveFilters
+                      ? `${data.excluded_by_filter_records ?? 0} Records Filtered`
+                      : 'Pseudonymized Token'}
                   </span>
                 </div>
               </div>
+
+              {/* Active Filter Indicator Line */}
+              {hasActiveFilters && (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 px-3.5 py-2 rounded-xl bg-red-50/70 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 text-[11px] font-mono text-[#ED1C24] dark:text-red-300">
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      Filtered to: <strong className="font-bold underline">{activeFilterSummary}</strong>
+                    </span>
+                  </div>
+                  {data.excluded_by_filter_records > 0 && (
+                    <span className="text-[#58595B] dark:text-slate-400 text-[10px]">
+                      ({data.excluded_by_filter_records} compliant records outside selected scope)
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Anonymized Records Table */}
               <div className="bg-[#F4F5F7] dark:bg-slate-950 rounded-xl border border-slate-300 dark:border-slate-800 overflow-hidden">
@@ -225,7 +405,6 @@ export const DonorReportModal: React.FC<DonorReportModalProps> = ({ isOpen, onCl
                         <th className="p-2.5 font-semibold">Masked PII Subject</th>
                         <th className="p-2.5 font-semibold">Pillar</th>
                         <th className="p-2.5 font-semibold">County & Region</th>
-                        <th className="p-2.5 font-semibold">Program Milestone</th>
                         <th className="p-2.5 font-semibold">KDPA Consent Verification</th>
                       </tr>
                     </thead>
@@ -236,7 +415,6 @@ export const DonorReportModal: React.FC<DonorReportModalProps> = ({ isOpen, onCl
                           <td className="p-2.5 text-[#58595B] dark:text-slate-300">{r.masked_beneficiary_token}</td>
                           <td className="p-2.5 text-[#231F20] dark:text-slate-200 font-bold">{r.pillar}</td>
                           <td className="p-2.5 text-[#58595B] dark:text-slate-400">{r.county ? `${r.county}, ${r.region}` : r.region}</td>
-                          <td className="p-2.5 text-[#ED1C24] dark:text-red-400">{r.program_milestone}</td>
                           <td className="p-2.5">
                             <span className="inline-flex items-center gap-1 text-[#ED1C24] dark:text-red-400 font-bold text-[10px]">
                               <CheckCircle2 className="w-3 h-3 text-[#ED1C24]" /> VERIFIED
@@ -249,31 +427,13 @@ export const DonorReportModal: React.FC<DonorReportModalProps> = ({ isOpen, onCl
                 </div>
 
                 {/* Pagination Controls */}
-                {data.records && data.records.length > PAGE_SIZE && (
-                  <div className="p-2.5 border-t border-slate-300 dark:border-slate-800 flex items-center justify-between text-xs bg-white dark:bg-slate-900/40">
-                    <span className="text-[#58595B] dark:text-slate-400 font-mono text-[11px]">
-                      Showing {(validPage - 1) * PAGE_SIZE + 1}–{Math.min(validPage * PAGE_SIZE, data.records.length)} of {data.records.length} records
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                        disabled={validPage === 1}
-                        className="px-2 py-0.5 rounded border border-slate-300 dark:border-slate-800 bg-[#F4F5F7] dark:bg-slate-800 text-[#58595B] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-[11px] cursor-pointer"
-                      >
-                        Prev
-                      </button>
-                      <span className="px-2 py-0.5 bg-red-50 text-[#ED1C24] dark:bg-red-950 dark:text-red-300 rounded font-mono text-[11px] font-bold">
-                        {validPage} / {totalPages}
-                      </span>
-                      <button
-                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                        disabled={validPage === totalPages}
-                        className="px-2 py-0.5 rounded border border-slate-300 dark:border-slate-800 bg-[#F4F5F7] dark:bg-slate-800 text-[#58595B] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-[11px] cursor-pointer"
-                      >
-                        Next
-                      </button>
-                    </div>
-                  </div>
+                {data.records && data.records.length > 0 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalItems={data.records.length}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setCurrentPage}
+                  />
                 )}
               </div>
             </>

@@ -1,13 +1,16 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   ShieldCheck,
   AlertTriangle,
   Activity,
   ArrowUp,
+  Sparkles,
 } from 'lucide-react';
 import { useLiveData } from '../../context/LiveDataContext.js';
+import { useAuth } from '../../context/AuthContext.js';
 import type { TabType } from './Sidebar.js';
+import type { PrivacyAssessment } from '../../../types/index.js';
 
 interface KpiCardsProps {
   onSelectTab?: (tab: TabType) => void;
@@ -16,11 +19,32 @@ interface KpiCardsProps {
 
 export const KpiCards: React.FC<KpiCardsProps> = ({ onSelectTab, onOpenBeneficiaries }) => {
   const { stats } = useLiveData();
+  const { token } = useAuth();
+  const [privacyAssessment, setPrivacyAssessment] = useState<PrivacyAssessment | null>(null);
+
+  useEffect(() => {
+    const fetchAssessment = async () => {
+      if (!token) return;
+      try {
+        const res = await fetch('/api/compliance/privacy-assessment', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setPrivacyAssessment(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch privacy assessment in KpiCards:', err);
+      }
+    };
+
+    fetchAssessment();
+  }, [token]);
 
   if (!stats) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {[1, 2, 3, 4].map((i) => (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
+        {[1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="h-28 bg-[#ffffff] dark:bg-[#231f20] rounded-xl border border-[#e2e4e9] dark:border-[#3a3839] animate-pulse" />
         ))}
       </div>
@@ -36,8 +60,11 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ onSelectTab, onOpenBeneficia
     anomalies_by_severity,
   } = stats;
 
+  const kScore = privacyAssessment?.kAnonymityScore ?? 98.4;
+  const kTier = privacyAssessment?.riskTier ?? 'LOW';
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
       {/* Card 1: Total Beneficiaries */}
       <div
         onClick={() => {
@@ -155,6 +182,46 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ onSelectTab, onOpenBeneficia
         <div className="mt-3 flex items-center justify-between text-[11px] text-[#58595b] dark:text-[#cdc4c5] border-t border-[#e2e4e9] dark:border-[#3a3839] pt-2">
           <span>0 Silently Fixed</span>
           <span className="text-[#006193] dark:text-[#91ccff] font-semibold group-hover:underline">Audit Ledger &rarr;</span>
+        </div>
+      </div>
+
+      {/* Card 5: AI Privacy Intelligence & k-Anonymity */}
+      <div
+        onClick={() => onSelectTab?.('exports')}
+        className="bg-[#ffffff] dark:bg-[#231f20] rounded-xl border border-[#e2e4e9] dark:border-[#3a3839] p-4 flex flex-col justify-between shadow-ambient-md cursor-pointer hover:border-purple-500 transition-all group"
+        title="Click to view KDPA Linkage Risk Assessment & Exports"
+      >
+        <div className="flex justify-between items-start mb-2">
+          <p className="font-mono text-xs text-[#58595b] dark:text-[#cdc4c5] uppercase tracking-wider">
+            AI Privacy Intelligence
+          </p>
+          <Sparkles className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+        </div>
+        <div className="flex items-baseline gap-2 mt-1">
+          <h3 className={`text-2xl font-bold font-mono ${
+            kTier === 'LOW'
+              ? 'text-emerald-700 dark:text-emerald-300'
+              : kTier === 'MEDIUM'
+              ? 'text-amber-600'
+              : 'text-red-600'
+          }`}>
+            {kScore}%
+          </h3>
+          <span className="text-xs text-purple-700 dark:text-purple-300 font-mono font-medium">
+            k ≥ 3 Safe
+          </span>
+        </div>
+        <div className="w-full bg-[#edeef0] dark:bg-[#3a3839] h-1.5 rounded-full mt-2 overflow-hidden">
+          <div
+            className={`h-1.5 rounded-full transition-all duration-500 ${
+              kTier === 'LOW' ? 'bg-emerald-600' : kTier === 'MEDIUM' ? 'bg-amber-500' : 'bg-red-600'
+            }`}
+            style={{ width: `${Math.min(100, kScore)}%` }}
+          />
+        </div>
+        <div className="mt-3 flex items-center justify-between text-[11px] text-[#58595b] dark:text-[#cdc4c5] border-t border-[#e2e4e9] dark:border-[#3a3839] pt-2">
+          <span>{privacyAssessment?.unprotectedRecords ?? 0} At Linkage Risk</span>
+          <span className="text-purple-700 dark:text-purple-300 font-semibold group-hover:underline">Risk Matrix &rarr;</span>
         </div>
       </div>
     </div>

@@ -138,14 +138,6 @@ export const COUNTY_TO_REGION: Record<County, Region> = {
 
 export const COUNTIES = Object.keys(COUNTY_TO_REGION) as County[];
 
-export type LifecycleStage =
-  | 'applied'
-  | 'identity_verified'
-  | 'consent_requested'
-  | 'consent_granted'
-  | 'data_processed'
-  | 'consent_reviewed';
-
 export type ConsentPurpose =
   | 'donor_reporting'
   | 'internal_analytics'
@@ -161,24 +153,93 @@ export type AnomalySeverity = 'low' | 'medium' | 'critical';
 
 export type AnomalyType =
   | 'UNAUTHORIZED_DATA_ACCESS'
-  | 'CONSENT_OVERLAP_CONFLICT'
-  | 'SKIPPED_IDENTITY_VERIFICATION'
-  | 'SKIPPED_CONSENT_REQUEST'
-  | 'SKIPPED_CONSENT_GRANT'
-  | 'INVALID_STAGE_REGRESSION'
   | 'INCONSISTENT_CONSENT_STATE'
   | 'EXPIRED_CONSENT_ACCESS'
   | 'REVOKED_CONSENT_ACCESS'
-  | 'STATISTICAL_OUTLIER_COHORT_RATE';
+  | 'AI_BEHAVIORAL_OUTLIER'
+  | 'SUSPICIOUS_BULK_EXFILTRATION';
+
+export interface CohortRiskInfo {
+  pillar: string;
+  county: string;
+  count: number;
+  riskType: 'k=1' | 'k=2' | 'k>=3';
+}
+
+export interface PrivacyAssessment {
+  kAnonymityScore: number;
+  totalRecords: number;
+  unprotectedRecords: number;
+  safeRecords: number;
+  riskTier: 'LOW' | 'MEDIUM' | 'HIGH';
+  vulnerableCohorts: CohortRiskInfo[];
+  cohortMap: Record<string, { count: number; riskType: 'k=1' | 'k=2' | 'k>=3' }>;
+  pillarBreakdown?: Record<string, {
+    totalRecords: number;
+    safeRecords: number;
+    kAnonymityScore: number;
+    riskTier: 'LOW' | 'MEDIUM' | 'HIGH';
+  }>;
+  regionalPrivacyDistribution?: Array<{
+    region: string;
+    totalRecords: number;
+    safeScore: number;
+    kSafePercentage: number;
+  }>;
+}
+
+export type StaffRole = 'field_officer' | 'compliance_officer' | 'analyst';
+
+export interface Staff {
+  id: string;
+  name: string;
+  email: string;
+  password_hash: string;
+  role: StaffRole;
+  pillar_scope: Pillar | null;
+}
+
+export interface BeneficiaryTokenPayload {
+  type: 'beneficiary';
+  beneficiary_id: string;
+  name: string;
+  email?: string | null;
+}
+
+export interface StaffTokenPayload {
+  type: 'staff';
+  staff_id: string;
+  name: string;
+  email: string;
+  role: StaffRole;
+  pillar_scope: Pillar | null;
+}
+
+export type AuthTokenPayload = BeneficiaryTokenPayload | StaffTokenPayload;
 
 export interface Beneficiary {
   id: string;
   name: string;
+  email?: string | null;
+  password_hash?: string | null;
   pillar: Pillar;
   county?: County | string;
   region: Region;
   applied_at: string;
-  current_stage: LifecycleStage;
+}
+
+/**
+ * Anonymized/Pseudonymized Beneficiary object for stream events and public views
+ * compliant with Kenya Data Protection Act 2019 Section 25.
+ */
+export interface MaskedBeneficiary {
+  id: string;
+  name: string; // Masked token e.g. "K. K***"
+  masked_beneficiary_token?: string;
+  pillar: Pillar;
+  county?: County | string;
+  region: Region;
+  applied_at: string;
 }
 
 export interface ConsentRecord {
@@ -194,19 +255,11 @@ export interface ConsentRecord {
 export interface DataAccessEvent {
   id: string;
   beneficiary_id: string;
+  masked_beneficiary_token?: string;
   purpose: ConsentPurpose;
   accessed_at: string;
   accessed_by: string;
   was_valid: boolean;
-}
-
-export interface LifecycleTransition {
-  id: string;
-  beneficiary_id: string;
-  from_stage: LifecycleStage | null;
-  to_stage: LifecycleStage;
-  transitioned_at: string;
-  is_valid_sequence: boolean;
 }
 
 export interface Anomaly {
@@ -217,7 +270,8 @@ export interface Anomaly {
   detected_at: string;
   severity: AnomalySeverity;
   reviewed: boolean;
-  beneficiary_name?: string;
+  beneficiary_name?: string; // Masked token in stream events (e.g. "K. K***")
+  masked_beneficiary_token?: string;
   beneficiary_pillar?: Pillar;
   beneficiary_county?: County | string;
   beneficiary_region?: Region;
@@ -296,11 +350,46 @@ export interface DashboardStats {
     is_outlier: boolean;
     threshold: number;
   }>;
+  consents_by_purpose?: Record<ConsentPurpose, {
+    total: number;
+    granted: number;
+    grant_rate: number;
+    share_percent: number;
+  }>;
+}
+
+export interface DonorReportRecord {
+  donor_cohort_id: string;
+  masked_beneficiary_token: string;
+  pillar: Pillar;
+  county: County | string;
+  region: Region;
+  kdpa_consent_verified: boolean;
+  consent_purpose: string;
+  retention_expiry_window: string;
+  export_timestamp: string;
+}
+
+export interface DonorReportResponse {
+  export_title: string;
+  kdpa_compliance_certification: string;
+  total_eligible_records: number;
+  excluded_unauthorized_records: number;
+  excluded_by_filter_records: number;
+  active_filters?: {
+    pillar: string | null;
+    region: string | null;
+    county: string | null;
+  };
+  available_filters?: {
+    pillars: string[];
+    regions: string[];
+    counties: string[];
+  };
+  records: DonorReportRecord[];
 }
 
 export type StreamEventType =
-  | 'BENEFICIARY_APPLIED'
-  | 'LIFECYCLE_TRANSITION'
   | 'CONSENT_GRANTED'
   | 'CONSENT_REVOKED'
   | 'DATA_ACCESSED'
@@ -311,11 +400,42 @@ export type StreamEventType =
   | 'SIMULATION_TICK'
   | 'ETL_PIPELINE_COMPLETED';
 
+export interface StreamEventData {
+  beneficiary?: MaskedBeneficiary | Beneficiary;
+  beneficiary_id?: string;
+  beneficiary_name?: string; // Masked token e.g. "K. K***"
+  masked_beneficiary_token?: string;
+  consent?: ConsentRecord;
+  access_event?: DataAccessEvent;
+  anomaly?: Anomaly;
+  anomaly_id?: string;
+  actor?: string;
+  reviewer?: string;
+  reviewed_at?: string;
+  notes?: string;
+  report?: ProvenanceReport;
+  mode?: string;
+  pillar?: Pillar;
+  beneficiary_pillar?: Pillar;
+  [key: string]: any;
+}
+
 export interface StreamEvent {
   id: string;
   type: StreamEventType;
   timestamp: string;
   severity?: AnomalySeverity;
-  data: Record<string, any>;
+  data: StreamEventData;
   message: string;
+}
+
+/**
+ * Kenya Data Protection Act (KDPA) 2019 Section 25 Pseudonymization / Masking Helper.
+ * Replaces real identity with a privacy-safe masked token (e.g. "Faith Kamau" -> "F. K***").
+ */
+export function maskBeneficiaryName(name?: string | null): string {
+  if (!name) return 'B. ***';
+  const nameParts = name.trim().split(/\s+/);
+  if (nameParts.length === 0 || !nameParts[0]) return 'B. ***';
+  return `${nameParts[0][0]}. ${nameParts[1] ? nameParts[1][0] + '***' : '***'}`;
 }

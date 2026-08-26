@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  validateLifecycleTransition,
   detectConsentConflict,
   validateDataAccessEvent,
   evaluateCohortAnomalyRates,
@@ -11,54 +10,9 @@ import type { ConsentRecord, DataAccessEvent, ValidationGateResult } from '../ty
 
 describe('Validation Logic Module (ConsentGuard Engine)', () => {
   // ==========================================================================
-  // 1. Stage Sequence Validation
+  // 1. Entity-Level Consent Conflict Detection
   // ==========================================================================
-  describe('Gate 1: Stage Sequence Validation', () => {
-    it('validates a correct, sequential forward lifecycle progression', () => {
-      expect(validateLifecycleTransition(null, 'applied').isValid).toBe(true);
-      expect(validateLifecycleTransition('applied', 'identity_verified').isValid).toBe(true);
-      expect(validateLifecycleTransition('identity_verified', 'consent_requested').isValid).toBe(true);
-      expect(validateLifecycleTransition('consent_requested', 'consent_granted').isValid).toBe(true);
-      expect(validateLifecycleTransition('consent_granted', 'data_processed').isValid).toBe(true);
-      expect(validateLifecycleTransition('data_processed', 'consent_reviewed').isValid).toBe(true);
-    });
-
-    it('allows valid renewal and re-request transitions from consent_reviewed', () => {
-      expect(validateLifecycleTransition('consent_reviewed', 'consent_granted').isValid).toBe(true);
-      expect(validateLifecycleTransition('consent_reviewed', 'consent_requested').isValid).toBe(true);
-    });
-
-    it('rejects skipping identity verification and consent request (applied -> consent_granted)', () => {
-      const result = validateLifecycleTransition('applied', 'consent_granted');
-      expect(result.isValid).toBe(false);
-      expect(result.anomaly?.type).toBe('SKIPPED_IDENTITY_VERIFICATION');
-      expect(result.anomaly?.severity).toBe('medium');
-    });
-
-    it('rejects processing data directly from application without consent (applied -> data_processed)', () => {
-      const result = validateLifecycleTransition('applied', 'data_processed');
-      expect(result.isValid).toBe(false);
-      expect(result.anomaly?.type).toBe('SKIPPED_CONSENT_GRANT');
-      expect(result.anomaly?.severity).toBe('critical');
-    });
-
-    it('rejects skipping consent request (identity_verified -> consent_granted)', () => {
-      const result = validateLifecycleTransition('identity_verified', 'consent_granted');
-      expect(result.isValid).toBe(false);
-      expect(result.anomaly?.type).toBe('SKIPPED_CONSENT_REQUEST');
-    });
-
-    it('rejects invalid backward regressions (data_processed -> applied)', () => {
-      const result = validateLifecycleTransition('data_processed', 'applied');
-      expect(result.isValid).toBe(false);
-      expect(result.anomaly?.type).toBe('INVALID_STAGE_REGRESSION');
-    });
-  });
-
-  // ==========================================================================
-  // 2. Entity-Level Consent Conflict Detection
-  // ==========================================================================
-  describe('Gate 2: Entity-Level Consent Conflict Detection', () => {
+  describe('Gate 1: Entity-Level Consent Conflict Detection', () => {
     it('allows new consent when no existing consent for that purpose exists', () => {
       const existing: ConsentRecord[] = [
         {
@@ -111,7 +65,7 @@ describe('Validation Logic Module (ConsentGuard Engine)', () => {
 
       const result = detectConsentConflict(existing, conflictingRecord);
       expect(result.hasConflict).toBe(true);
-      expect(result.anomaly?.type).toBe('CONSENT_OVERLAP_CONFLICT');
+      expect(result.anomaly?.type).toBe('INCONSISTENT_CONSENT_STATE');
       expect(result.anomaly?.severity).toBe('critical');
     });
 
@@ -301,19 +255,19 @@ describe('Validation Logic Module (ConsentGuard Engine)', () => {
   });
 
   // ==========================================================================
-  // 6. Provenance Report Generation
+  // 5. Provenance Report Generation
   // ==========================================================================
-  describe('Gate 6: Provenance Run Report Generation', () => {
+  describe('Gate 5: Provenance Run Report Generation', () => {
     it('generates an accurate JSON provenance run report matching batch metrics', () => {
       const syntheticBatch = [
-        { type: 'BENEFICIARY_APPLIED', was_valid: true },
+        { type: 'BENEFICIARY_RECORD', was_valid: true },
         { type: 'CONSENT_GRANTED', was_valid: true },
         { type: 'DATA_ACCESS', was_valid: false, anomaly_type: 'UNAUTHORIZED_DATA_ACCESS' as const },
-        { type: 'LIFECYCLE_TRANSITION', was_valid: false, anomaly_type: 'SKIPPED_IDENTITY_VERIFICATION' as const },
+        { type: 'CONSENT_CONFLICT', was_valid: false, anomaly_type: 'INCONSISTENT_CONSENT_STATE' as const },
       ];
 
       const gateResults: ValidationGateResult[] = [
-        { gate_name: 'Sequence Gate', passed: false, evaluated_count: 4, failure_count: 1, description: 'Stage sequence' },
+        { gate_name: 'Conflict Gate', passed: false, evaluated_count: 4, failure_count: 1, description: 'Overlap detection' },
         { gate_name: 'Access Authorization Gate', passed: false, evaluated_count: 4, failure_count: 1, description: 'Write-time consent check' },
       ];
 
@@ -325,7 +279,7 @@ describe('Validation Logic Module (ConsentGuard Engine)', () => {
       expect(report.invalid_event_count).toBe(2);
       expect(report.anomalies_detected).toBe(2);
       expect(report.anomalies_by_type['UNAUTHORIZED_DATA_ACCESS']).toBe(1);
-      expect(report.anomalies_by_type['SKIPPED_IDENTITY_VERIFICATION']).toBe(1);
+      expect(report.anomalies_by_type['INCONSISTENT_CONSENT_STATE']).toBe(1);
       expect(report.overall_status).toBe('WARNING');
       expect(report.execution_duration_ms).toBe(45);
       expect(report.environment_hash).toMatch(/^sha256:[a-f0-9]{64}$/);

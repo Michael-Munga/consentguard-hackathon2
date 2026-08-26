@@ -10,6 +10,8 @@ import {
   Tag,
   ShieldCheck,
   Check,
+  Sparkles,
+  Activity,
 } from 'lucide-react';
 import type { AnomalyEvent } from '../../../types/index.js';
 import { useLiveDataContext } from '../../context/LiveDataContext.js';
@@ -40,6 +42,17 @@ export const AnomalyDetailModal: React.FC<AnomalyDetailModalProps> = ({
   const severityUpper = (anomaly.severity || 'low').toUpperCase();
   const isCritical = severityUpper === 'CRITICAL';
   const isMedium = severityUpper === 'MEDIUM';
+
+  const isMlOutlier = anomaly.anomaly_type === 'AI_BEHAVIORAL_OUTLIER' ||
+                      anomaly.anomaly_type === 'SUSPICIOUS_BULK_EXFILTRATION' ||
+                      (anomaly.detail && anomaly.detail.includes('[ML Anomaly Score:')) ||
+                      (anomaly.description && anomaly.description.includes('[ML Anomaly Score:'));
+
+  const fullText = (anomaly.description || anomaly.detail || '');
+  const threatScoreMatch = fullText.match(/ML Anomaly Score:\s*(\d+)\/100/);
+  const threatScore = threatScoreMatch ? parseInt(threatScoreMatch[1], 10) : null;
+  const zScoreMatch = fullText.match(/Z-Score:\s*([+-]?\d+(\.\d+)?)/);
+  const zScore = zScoreMatch ? zScoreMatch[1] : null;
 
   const severityBadgeClass = isCritical
     ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
@@ -100,6 +113,14 @@ export const AnomalyDetailModal: React.FC<AnomalyDetailModalProps> = ({
                 >
                   {severityUpper}
                 </span>
+
+                {isMlOutlier && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold border inline-flex items-center gap-1 bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200 dark:border-purple-800">
+                    <Sparkles className="w-3 h-3" />
+                    ML Outlier
+                  </span>
+                )}
+
                 <span
                   className={cn(
                     'px-2.5 py-0.5 rounded-full text-xs font-mono font-bold border inline-flex items-center gap-1',
@@ -177,6 +198,37 @@ export const AnomalyDetailModal: React.FC<AnomalyDetailModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* ML Threat Score Card if ML Outlier */}
+          {isMlOutlier && threatScore !== null && (
+            <div className="p-4 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 rounded-xl space-y-2.5 font-mono">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-purple-900 dark:text-purple-200 font-bold">
+                  <Activity className="w-4 h-4 text-purple-600" />
+                  <span>Unsupervised ML Access Threat Index</span>
+                </div>
+                <span className="font-extrabold text-sm text-purple-700 dark:text-purple-300">
+                  {threatScore} / 100
+                </span>
+              </div>
+              <div className="w-full h-2.5 rounded-full bg-purple-200 dark:bg-purple-900/60 overflow-hidden">
+                <div
+                  style={{ width: `${Math.min(100, threatScore)}%` }}
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    threatScore >= 80
+                      ? 'bg-red-600'
+                      : threatScore >= 65
+                      ? 'bg-purple-600'
+                      : 'bg-emerald-600'
+                  }`}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-purple-800 dark:text-purple-300">
+                <span>Z-Score: +{zScore || 'N/A'}</span>
+                <span>Role Scope Baseline Exceeded</span>
+              </div>
+            </div>
+          )}
 
           {/* Incident Description */}
           <div>

@@ -1,10 +1,11 @@
 import Database from 'better-sqlite3';
 import { getDatabase, closeDatabase, DbRepository } from './database.js';
+import { hashPassword } from '../auth/crypto.js';
 import type {
   Beneficiary,
+  Staff,
   ConsentRecord,
   DataAccessEvent,
-  LifecycleTransition,
   Anomaly,
   AnomalyType,
   AnomalySeverity,
@@ -12,12 +13,10 @@ import type {
   Pillar,
   Region,
   County,
-  LifecycleStage,
   ConsentPurpose,
 } from '../../types/index.js';
 import { COUNTIES, COUNTY_TO_REGION, REGIONS } from '../../types/index.js';
 import {
-  validateLifecycleTransition,
   validateDataAccessEvent,
   detectConsentConflict,
   validateConsentRecordIntegrity,
@@ -77,29 +76,21 @@ const STAFF_ACTORS = [
 ];
 
 const ANOMALY_TYPES: AnomalyType[] = [
-  'SKIPPED_IDENTITY_VERIFICATION',
-  'SKIPPED_CONSENT_REQUEST',
-  'SKIPPED_CONSENT_GRANT',
-  'INVALID_STAGE_REGRESSION',
+  'UNAUTHORIZED_DATA_ACCESS',
   'INCONSISTENT_CONSENT_STATE',
   'EXPIRED_CONSENT_ACCESS',
   'REVOKED_CONSENT_ACCESS',
-  'UNAUTHORIZED_DATA_ACCESS',
-  'CONSENT_OVERLAP_CONFLICT',
-  'STATISTICAL_OUTLIER_COHORT_RATE',
+  'AI_BEHAVIORAL_OUTLIER',
+  'SUSPICIOUS_BULK_EXFILTRATION',
 ];
 
 const ANOMALY_DETAILS: Record<AnomalyType, string> = {
   UNAUTHORIZED_DATA_ACCESS: 'Unauthorized access attempt detected without valid purpose authorization.',
-  CONSENT_OVERLAP_CONFLICT: 'Entity Overlap Conflict: Multiple overlapping active consent records identified.',
-  SKIPPED_IDENTITY_VERIFICATION: 'Lifecycle Sequence Breach: Transition bypassed mandatory identity verification stage.',
-  SKIPPED_CONSENT_REQUEST: 'Lifecycle Warning: Transitioned without required antecedent consent request milestone.',
-  SKIPPED_CONSENT_GRANT: 'Data Processing Flag: Milestone transition attempted prior to formal consent grant.',
-  INVALID_STAGE_REGRESSION: 'Invalid Stage Regression: Workflow state reverted backwards without authorized override.',
-  INCONSISTENT_CONSENT_STATE: 'Data Integrity Alert: Consent record timestamp inconsistent with lifecycle milestone.',
+  INCONSISTENT_CONSENT_STATE: 'Data Integrity Alert: Consent record timestamp inconsistent with authorized mandate.',
   EXPIRED_CONSENT_ACCESS: 'Retention Policy Alert: Data queried beyond statutory consent expiration window.',
   REVOKED_CONSENT_ACCESS: 'Access Attempt on Revoked Mandate: Query executed after consent was formally revoked.',
-  STATISTICAL_OUTLIER_COHORT_RATE: 'Statistical Outlier: Pillar cohort anomaly rate exceeded 2-sigma threshold.',
+  AI_BEHAVIORAL_OUTLIER: 'AI Behavioral Outlier: Statistical anomaly in actor access volume.',
+  SUSPICIOUS_BULK_EXFILTRATION: 'Suspicious Bulk Exfiltration: High-volume data export beyond normal threshold.',
 };
 
 function randomChoice<T>(arr: T[]): T {
@@ -122,21 +113,165 @@ export function seedDatabase(count = 5200, customDb?: Database.Database): void {
   db.exec(`
     DELETE FROM audit_log;
     DELETE FROM anomalies;
-    DELETE FROM lifecycle_transitions;
     DELETE FROM data_access_events;
     DELETE FROM consent_records;
+    DELETE FROM staff;
     DELETE FROM beneficiaries;
   `);
+
+  console.log(`[Seed] Seeding staff accounts for all roles...`);
+  const defaultStaffPasswordHash = hashPassword('Password123!');
+  const staffMembers: Staff[] = [
+    {
+      id: 'STF-COMP-001',
+      name: 'Sarah Jenkins',
+      email: 'compliance@inuka.kpc.co.ke',
+      password_hash: defaultStaffPasswordHash,
+      role: 'compliance_officer',
+      pillar_scope: null,
+    },
+    {
+      id: 'STF-COMP-002',
+      name: 'Admin Officer',
+      email: 'admin@inuka.kpc.co.ke',
+      password_hash: defaultStaffPasswordHash,
+      role: 'compliance_officer',
+      pillar_scope: null,
+    },
+    {
+      id: 'STF-COMP-003',
+      name: 'Sarah Jenkins (Gov)',
+      email: 's.jenkins@consentguard.gov',
+      password_hash: defaultStaffPasswordHash,
+      role: 'compliance_officer',
+      pillar_scope: null,
+    },
+    {
+      id: 'STF-FLD-001',
+      name: 'David Omondi',
+      email: 'field.scholarship@inuka.kpc.co.ke',
+      password_hash: defaultStaffPasswordHash,
+      role: 'field_officer',
+      pillar_scope: 'Scholarship',
+    },
+    {
+      id: 'STF-FLD-002',
+      name: 'Amina Hassan',
+      email: 'field.tech@inuka.kpc.co.ke',
+      password_hash: defaultStaffPasswordHash,
+      role: 'field_officer',
+      pillar_scope: 'Tech',
+    },
+    {
+      id: 'STF-FLD-003',
+      name: 'Field Officer General',
+      email: 'field@inuka.kpc.co.ke',
+      password_hash: defaultStaffPasswordHash,
+      role: 'field_officer',
+      pillar_scope: 'Scholarship',
+    },
+    {
+      id: 'STF-ANL-001',
+      name: 'Dr. Kevin Kiprono',
+      email: 'analyst@inuka.kpc.co.ke',
+      password_hash: defaultStaffPasswordHash,
+      role: 'analyst',
+      pillar_scope: null,
+    },
+  ];
+
+  for (const s of staffMembers) {
+    repo.insertStaff(s);
+  }
 
   console.log(`[Seed] Generating ${count} realistic synthetic beneficiaries across 4 pillars, 47 counties & 8 regions...`);
 
   const now = new Date();
   const beneficiaries: Beneficiary[] = [];
   const consents: ConsentRecord[] = [];
-  const transitions: LifecycleTransition[] = [];
   const accessEvents: DataAccessEvent[] = [];
   const anomalies: Anomaly[] = [];
   const auditLogs: AuditLog[] = [];
+
+  const defaultBeneficiaryPasswordHash = hashPassword('Passphrase123!');
+
+  // Primary Demo Beneficiary matching Stitch UI design: Faith Kamau (INK-84920)
+  const demoAppliedDate = new Date(now.getTime() - 45 * 86400000);
+  const demoAppliedStr = formatDate(demoAppliedDate);
+  const demoBen: Beneficiary = {
+    id: 'INK-84920',
+    name: 'Faith Kamau',
+    email: 'faith.kamau@inuka.ke',
+    password_hash: defaultBeneficiaryPasswordHash,
+    pillar: 'Scholarship',
+    county: 'Nairobi',
+    region: 'Nairobi',
+    applied_at: demoAppliedStr,
+  };
+  beneficiaries.push(demoBen);
+
+  // Consents for Faith Kamau: donor_reporting (granted), internal_analytics (granted), third_party_sharing (revoked)
+  consents.push(
+    {
+      id: 'CR-INK-84920-DON',
+      beneficiary_id: 'INK-84920',
+      purpose: 'donor_reporting',
+      status: 'granted',
+      granted_at: formatDate(new Date(demoAppliedDate.getTime() + 2 * 86400000)),
+      revoked_at: null,
+      expires_at: formatDate(new Date(demoAppliedDate.getTime() + 367 * 86400000)),
+    },
+    {
+      id: 'CR-INK-84920-INT',
+      beneficiary_id: 'INK-84920',
+      purpose: 'internal_analytics',
+      status: 'granted',
+      granted_at: formatDate(new Date(demoAppliedDate.getTime() + 2 * 86400000)),
+      revoked_at: null,
+      expires_at: formatDate(new Date(demoAppliedDate.getTime() + 367 * 86400000)),
+    },
+    {
+      id: 'CR-INK-84920-THI',
+      beneficiary_id: 'INK-84920',
+      purpose: 'third_party_sharing',
+      status: 'revoked',
+      granted_at: formatDate(new Date(demoAppliedDate.getTime() + 2 * 86400000)),
+      revoked_at: formatDate(new Date(now.getTime() - 5 * 86400000)),
+      expires_at: formatDate(new Date(demoAppliedDate.getTime() + 367 * 86400000)),
+    }
+  );
+
+  accessEvents.push({
+    id: 'DA-INK-84920-1',
+    beneficiary_id: 'INK-84920',
+    purpose: 'donor_reporting',
+    accessed_at: formatDate(new Date(now.getTime() - 10 * 86400000)),
+    accessed_by: 'inuka_scholarship_auditor',
+    was_valid: true,
+  });
+
+  auditLogs.push(
+    {
+      id: 'AUD-INK-84920-INIT',
+      entity_type: 'beneficiary',
+      entity_id: 'INK-84920',
+      action: 'ENROLLED_BENEFICIARY',
+      actor: 'system_intake@inuka.kpc.co.ke',
+      timestamp: demoAppliedStr,
+      before_state: null,
+      after_state: JSON.stringify(demoBen),
+    },
+    {
+      id: 'AUD-INK-84920-REVOKE',
+      entity_type: 'consent_record',
+      entity_id: 'CR-INK-84920-THI',
+      action: 'DIGITAL_CONSENT_REVOKED',
+      actor: 'INK-84920',
+      timestamp: formatDate(new Date(now.getTime() - 5 * 86400000)),
+      before_state: JSON.stringify({ purpose: 'third_party_sharing', status: 'granted' }),
+      after_state: JSON.stringify({ purpose: 'third_party_sharing', status: 'revoked' }),
+    }
+  );
 
   let benIndex = 1;
 
@@ -152,99 +287,111 @@ export function seedDatabase(count = 5200, customDb?: Database.Database): void {
     const appliedDate = new Date(now.getTime() - daysAgo * 86400000);
     const appliedStr = formatDate(appliedDate);
 
-    // Distribution of stages
-    // 70% fully progressed (data_processed or consent_reviewed)
-    // 30% in-flight (applied, identity_verified, consent_requested, consent_granted)
-    const stageRoll = Math.random();
-    let currentStage: LifecycleStage = 'data_processed';
-    if (stageRoll < 0.08) currentStage = 'applied';
-    else if (stageRoll < 0.16) currentStage = 'identity_verified';
-    else if (stageRoll < 0.28) currentStage = 'consent_requested';
-    else if (stageRoll < 0.45) currentStage = 'consent_granted';
-    else if (stageRoll < 0.80) currentStage = 'data_processed';
-    else currentStage = 'consent_reviewed';
+    // Realistic consent state distribution:
+    // 75% granted across all purposes
+    // 15% mixed (some granted, some revoked)
+    // 10% requested but pending
+    const profileRoll = Math.random();
+    const benConsents: ConsentRecord[] = [];
+    const benAccessEvents: DataAccessEvent[] = [];
+    const benAnomalies: Anomaly[] = [];
+
+    for (const purpose of PURPOSES) {
+      const consentId = `CR-${id}-${purpose.substring(0, 3).toUpperCase()}`;
+
+      if (profileRoll < 0.75) {
+        // Fully granted
+        const grantDelay = randomInt(1, 4);
+        const grantDate = new Date(appliedDate.getTime() + grantDelay * 86400000);
+        const expireDate = new Date(grantDate.getTime() + 365 * 86400000);
+
+        benConsents.push({
+          id: consentId,
+          beneficiary_id: id,
+          purpose,
+          status: 'granted',
+          granted_at: formatDate(grantDate),
+          revoked_at: null,
+          expires_at: formatDate(expireDate),
+        });
+
+        // Add 1-3 valid access events for active consents
+        const numAccess = randomInt(1, 3);
+        for (let a = 0; a < numAccess; a++) {
+          const accessDays = randomInt(1, Math.max(1, daysAgo - grantDelay));
+          const accessDate = new Date(now.getTime() - accessDays * 86400000);
+          benAccessEvents.push({
+            id: `DA-${id}-${purpose.substring(0, 3).toUpperCase()}-${a + 1}`,
+            beneficiary_id: id,
+            purpose,
+            accessed_at: formatDate(accessDate),
+            accessed_by: randomChoice(STAFF_ACTORS),
+            was_valid: true,
+          });
+        }
+      } else if (profileRoll < 0.9) {
+        // Mixed state
+        const isGranted = Math.random() > 0.4;
+        const grantDelay = randomInt(1, 4);
+        const grantDate = new Date(appliedDate.getTime() + grantDelay * 86400000);
+        const expireDate = new Date(grantDate.getTime() + 365 * 86400000);
+
+        if (isGranted) {
+          benConsents.push({
+            id: consentId,
+            beneficiary_id: id,
+            purpose,
+            status: 'granted',
+            granted_at: formatDate(grantDate),
+            revoked_at: null,
+            expires_at: formatDate(expireDate),
+          });
+        } else {
+          // Revoked
+          const revokeDelay = randomInt(5, 30);
+          const revokeDate = new Date(grantDate.getTime() + revokeDelay * 86400000);
+          benConsents.push({
+            id: consentId,
+            beneficiary_id: id,
+            purpose,
+            status: 'revoked',
+            granted_at: formatDate(grantDate),
+            revoked_at: formatDate(revokeDate),
+            expires_at: formatDate(expireDate),
+          });
+        }
+      } else {
+        // Requested only
+        benConsents.push({
+          id: consentId,
+          beneficiary_id: id,
+          purpose,
+          status: 'requested',
+          granted_at: null,
+          revoked_at: null,
+          expires_at: null,
+        });
+      }
+    }
+
+    const hasPortalAccess = i < 50;
+    const email = hasPortalAccess ? `${name.toLowerCase().replace(/[^a-z0-9]/g, '.')}@inuka.ke` : null;
+    const passwordHash = hasPortalAccess ? defaultBeneficiaryPasswordHash : null;
 
     const ben: Beneficiary = {
       id,
       name,
+      email,
+      password_hash: passwordHash,
       pillar,
       county,
       region,
       applied_at: appliedStr,
-      current_stage: currentStage,
     };
     beneficiaries.push(ben);
-
-    // Generate Lifecycle Transitions up to current stage
-    const stagesInOrder: LifecycleStage[] = [
-      'applied',
-      'identity_verified',
-      'consent_requested',
-      'consent_granted',
-      'data_processed',
-      'consent_reviewed',
-    ];
-    const targetIdx = stagesInOrder.indexOf(currentStage);
-
-    let stageTime = new Date(appliedDate);
-    for (let s = 0; s <= targetIdx; s++) {
-      const toStg = stagesInOrder[s];
-      const fromStg = s === 0 ? null : stagesInOrder[s - 1];
-      stageTime = new Date(stageTime.getTime() + randomInt(1, 3) * 86400000);
-
-      const transId = `TR-${id}-${s}`;
-      const trans: LifecycleTransition = {
-        id: transId,
-        beneficiary_id: id,
-        from_stage: fromStg,
-        to_stage: toStg,
-        transitioned_at: formatDate(stageTime),
-        is_valid_sequence: true,
-      };
-      transitions.push(trans);
-    }
-
-    // Generate Consents if progressed past consent_requested
-    if (targetIdx >= 3) {
-      for (const purpose of PURPOSES) {
-        // Most beneficiaries grant donor_reporting and internal_analytics; 60% grant third_party_sharing
-        const shouldGrant = purpose !== 'third_party_sharing' || Math.random() > 0.4;
-        const consentId = `CR-${id}-${purpose.substring(0, 3).toUpperCase()}`;
-
-        const grantDate = new Date(appliedDate.getTime() + 4 * 86400000);
-        const expireDate = new Date(grantDate.getTime() + 365 * 86400000); // 1 year retention
-
-        const cr: ConsentRecord = {
-          id: consentId,
-          beneficiary_id: id,
-          purpose,
-          status: shouldGrant ? 'granted' : 'requested',
-          granted_at: shouldGrant ? formatDate(grantDate) : null,
-          revoked_at: null,
-          expires_at: shouldGrant ? formatDate(expireDate) : null,
-        };
-        consents.push(cr);
-      }
-    }
-
-    // Generate legitimate Data Access Events for data_processed/consent_reviewed beneficiaries
-    if (targetIdx >= 4) {
-      const accessCount = randomInt(1, 4);
-      for (let a = 0; a < accessCount; a++) {
-        const accessPurpose: ConsentPurpose = Math.random() > 0.3 ? 'donor_reporting' : 'internal_analytics';
-        const accessTime = new Date(appliedDate.getTime() + randomInt(6, Math.max(7, daysAgo - 1)) * 86400000);
-
-        const dEvent: DataAccessEvent = {
-          id: `DA-${id}-${a + 1}`,
-          beneficiary_id: id,
-          purpose: accessPurpose,
-          accessed_at: formatDate(accessTime),
-          accessed_by: randomChoice(STAFF_ACTORS),
-          was_valid: true,
-        };
-        accessEvents.push(dEvent);
-      }
-    }
+    consents.push(...benConsents);
+    accessEvents.push(...benAccessEvents);
+    anomalies.push(...benAnomalies);
 
     // Audit log entry for creation
     auditLogs.push({
@@ -293,31 +440,31 @@ export function seedDatabase(count = 5200, customDb?: Database.Database): void {
     beneficiary_id: ben2.id,
     purpose: 'donor_reporting',
     status: 'revoked',
-    granted_at: formatDate(new Date(now.getTime() - 40 * 86400000)),
+    granted_at: formatDate(new Date(now.getTime() - 60 * 86400000)),
     revoked_at: formatDate(new Date(now.getTime() - 10 * 86400000)),
-    expires_at: formatDate(new Date(now.getTime() + 300 * 86400000)),
+    expires_at: formatDate(new Date(now.getTime() + 305 * 86400000)),
   };
   consents.push(revokedConsent);
-  const anomAccess2: DataAccessEvent = {
+  const revokedAccess: DataAccessEvent = {
     id: `DA-ANOM-002`,
     beneficiary_id: ben2.id,
     purpose: 'donor_reporting',
-    accessed_at: formatDate(new Date(now.getTime() - 3 * 86400000)), // 7 days after revocation!
-    accessed_by: 'donor_sync_daemon',
+    accessed_at: formatDate(new Date(now.getTime() - 3 * 86400000)),
+    accessed_by: 'donor_reporting_batch_job',
     was_valid: false,
   };
-  accessEvents.push(anomAccess2);
+  accessEvents.push(revokedAccess);
   anomalies.push({
     id: `ANOM-002`,
     beneficiary_id: ben2.id,
     anomaly_type: 'REVOKED_CONSENT_ACCESS',
-    detail: `Unauthorized Access Blocked: Automated sync daemon attempted extraction for 'donor_reporting' 7 days after beneficiary formally revoked consent.`,
-    detected_at: anomAccess2.accessed_at,
+    detail: `Access Attempt on Revoked Mandate: Query executed after beneficiary formally revoked 'donor_reporting' authorization on ${revokedConsent.revoked_at}.`,
+    detected_at: revokedAccess.accessed_at,
     severity: 'critical',
     reviewed: false,
   });
 
-  // Anomaly 3: Critical - Expired Consent Access
+  // Anomaly 3: Medium - Expired Consent Access
   const ben3 = beneficiaries[20];
   const expiredConsent: ConsentRecord = {
     id: `CR-EXPIRED-003`,
@@ -326,116 +473,57 @@ export function seedDatabase(count = 5200, customDb?: Database.Database): void {
     status: 'expired',
     granted_at: formatDate(new Date(now.getTime() - 400 * 86400000)),
     revoked_at: null,
-    expires_at: formatDate(new Date(now.getTime() - 35 * 86400000)), // Expired 35 days ago
+    expires_at: formatDate(new Date(now.getTime() - 35 * 86400000)),
   };
   consents.push(expiredConsent);
-  const anomAccess3: DataAccessEvent = {
+  const expiredAccess: DataAccessEvent = {
     id: `DA-ANOM-003`,
     beneficiary_id: ben3.id,
     purpose: 'internal_analytics',
     accessed_at: formatDate(new Date(now.getTime() - 5 * 86400000)),
-    accessed_by: 'analytics_pipeline',
+    accessed_by: 'internal_m_and_e_analyst',
     was_valid: false,
   };
-  accessEvents.push(anomAccess3);
+  accessEvents.push(expiredAccess);
   anomalies.push({
     id: `ANOM-003`,
     beneficiary_id: ben3.id,
     anomaly_type: 'EXPIRED_CONSENT_ACCESS',
-    detail: `Data Retention Policy Breach: Analytics pipeline accessed record after statutory 1-year retention window expired.`,
-    detected_at: anomAccess3.accessed_at,
-    severity: 'critical',
-    reviewed: false,
-  });
-
-  // Anomaly 4: Critical - Entity Consent Overlap Conflict
-  const ben4 = beneficiaries[25];
-  const conf1: ConsentRecord = {
-    id: `CR-CONF-004A`,
-    beneficiary_id: ben4.id,
-    purpose: 'donor_reporting',
-    status: 'granted',
-    granted_at: formatDate(new Date(now.getTime() - 60 * 86400000)),
-    revoked_at: null,
-    expires_at: formatDate(new Date(now.getTime() + 300 * 86400000)),
-  };
-  const conf2: ConsentRecord = {
-    id: `CR-CONF-004B`,
-    beneficiary_id: ben4.id,
-    purpose: 'donor_reporting',
-    status: 'granted',
-    granted_at: formatDate(new Date(now.getTime() - 15 * 86400000)),
-    revoked_at: null,
-    expires_at: formatDate(new Date(now.getTime() + 345 * 86400000)),
-  };
-  consents.push(conf1, conf2);
-  anomalies.push({
-    id: `ANOM-004`,
-    beneficiary_id: ben4.id,
-    anomaly_type: 'CONSENT_OVERLAP_CONFLICT',
-    detail: `Entity Overlap Conflict: Beneficiary has two concurrently active 'granted' records for 'donor_reporting' without intervening revocation (mirrors truck journey overlap).`,
-    detected_at: conf2.granted_at!,
-    severity: 'critical',
-    reviewed: false,
-  });
-
-  // Anomaly 5: Medium - Skipped Identity Verification
-  const ben5 = beneficiaries[30];
-  transitions.push({
-    id: `TR-ANOM-005`,
-    beneficiary_id: ben5.id,
-    from_stage: 'applied',
-    to_stage: 'consent_granted',
-    transitioned_at: formatDate(new Date(now.getTime() - 8 * 86400000)),
-    is_valid_sequence: false,
-  });
-  anomalies.push({
-    id: `ANOM-005`,
-    beneficiary_id: ben5.id,
-    anomaly_type: 'SKIPPED_IDENTITY_VERIFICATION',
-    detail: `Lifecycle Sequence Breach: Transition jumped from 'applied' directly to 'consent_granted', bypassing mandatory 'identity_verified' KYC checkpoint.`,
-    detected_at: formatDate(new Date(now.getTime() - 8 * 86400000)),
+    detail: `Retention Policy Alert: Data queried for 'internal_analytics' beyond statutory 365-day expiration window. Expired on ${expiredConsent.expires_at}.`,
+    detected_at: expiredAccess.accessed_at,
     severity: 'medium',
     reviewed: false,
   });
 
-  // Anomaly 6: Critical - Skipped Consent Grant
-  const ben6 = beneficiaries[35];
-  transitions.push({
-    id: `TR-ANOM-006`,
-    beneficiary_id: ben6.id,
-    from_stage: 'identity_verified',
-    to_stage: 'data_processed',
-    transitioned_at: formatDate(new Date(now.getTime() - 12 * 86400000)),
-    is_valid_sequence: false,
-  });
+  // Anomaly 4: Critical - Unauthorized Third-Party Research Access
+  const ben4 = beneficiaries[35];
   anomalies.push({
-    id: `ANOM-006`,
-    beneficiary_id: ben6.id,
-    anomaly_type: 'SKIPPED_CONSENT_GRANT',
-    detail: `Illegal Data Processing: Beneficiary data entered 'data_processed' stage without recorded digital consent authorization.`,
+    id: `ANOM-004`,
+    beneficiary_id: ben4.id,
+    anomaly_type: 'UNAUTHORIZED_DATA_ACCESS',
+    detail: `Unauthorized Access Attempt: Beneficiary record queried for external research without valid third-party consent mandate.`,
     detected_at: formatDate(new Date(now.getTime() - 12 * 86400000)),
     severity: 'critical',
     reviewed: false,
   });
 
-  // Anomaly 7: Medium - Inconsistent Consent State (Missing Timestamp)
-  const ben7 = beneficiaries[40];
+  // Anomaly 5: Medium - Inconsistent Consent State (Missing Timestamp)
+  const ben5 = beneficiaries[40];
   const brokenConsent: ConsentRecord = {
-    id: `CR-BROKEN-007`,
-    beneficiary_id: ben7.id,
+    id: `CR-BROKEN-005`,
+    beneficiary_id: ben5.id,
     purpose: 'donor_reporting',
     status: 'granted',
-    granted_at: null, // Deliberately missing timestamp to test Flag-Never-Silently-Fix
+    granted_at: null,
     revoked_at: null,
     expires_at: null,
   };
   consents.push(brokenConsent);
   anomalies.push({
-    id: `ANOM-007`,
-    beneficiary_id: ben7.id,
+    id: `ANOM-005`,
+    beneficiary_id: ben5.id,
     anomaly_type: 'INCONSISTENT_CONSENT_STATE',
-    detail: `Data Integrity Alert: Record marked 'granted' with null timestamp. Flagged and excluded from KPI calculations per 'Flag, never silently fix' policy.`,
+    detail: `Data Integrity Alert: Record marked 'granted' with null timestamp. Flagged and excluded from KPI calculations.`,
     detected_at: formatDate(new Date(now.getTime() - 14 * 86400000)),
     severity: 'medium',
     reviewed: false,
@@ -443,12 +531,10 @@ export function seedDatabase(count = 5200, customDb?: Database.Database): void {
 
   // ==========================================================================
   // Proportional Background Anomalies (3-6% of all seeded beneficiaries spread across 4 pillars)
-  // Distributed across the last 28 days (4 weekly buckets) with 'low' and 'medium' severity
   // ==========================================================================
   console.log(`[Seed] Generating proportional background anomalies across pillars over recent 28 days...`);
-  let anomSeq = 8;
+  let anomSeq = 6;
   for (const ben of beneficiaries) {
-    // Roughly 3-6% selection rate (~4.5%)
     if (Math.random() < 0.045) {
       const anomType = randomChoice(ANOMALY_TYPES);
       const severity: AnomalySeverity = Math.random() > 0.5 ? 'medium' : 'low';
@@ -472,7 +558,6 @@ export function seedDatabase(count = 5200, customDb?: Database.Database): void {
   const insertMany = db.transaction(() => {
     for (const b of beneficiaries) repo.insertBeneficiary(b);
     for (const c of consents) repo.insertConsentRecord(c);
-    for (const t of transitions) repo.insertLifecycleTransition(t);
     for (const a of accessEvents) repo.insertDataAccessEvent(a);
     for (const an of anomalies) repo.insertAnomaly(an);
     for (const log of auditLogs) repo.insertAuditLog(log);
@@ -483,7 +568,6 @@ export function seedDatabase(count = 5200, customDb?: Database.Database): void {
   console.log(`[Seed] Successfully seeded:`);
   console.log(`  - ${beneficiaries.length} Beneficiaries`);
   console.log(`  - ${consents.length} Consent Records`);
-  console.log(`  - ${transitions.length} Lifecycle Transitions`);
   console.log(`  - ${accessEvents.length} Data Access Events`);
   console.log(`  - ${anomalies.length} Pre-seeded Governance Anomalies`);
   console.log(`  - ${auditLogs.length} Audit Trail Records`);

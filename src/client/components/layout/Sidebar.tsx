@@ -7,10 +7,11 @@ import {
   History,
   Shield,
   ShieldCheck,
+  Download,
 } from 'lucide-react';
 import { useLiveData } from '../../context/LiveDataContext.js';
 
-export type TabType = 'feed' | 'consent' | 'anomalies' | 'analytics' | 'audit';
+export type TabType = 'feed' | 'consent' | 'anomalies' | 'analytics' | 'audit' | 'exports';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -25,40 +26,39 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onSelectTab, onOpen
     id: TabType;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
-    materialIcon: string;
     badge?: string | number | null;
   }> = [
     {
       id: 'feed',
       label: 'Live Activity Feed',
       icon: Radio,
-      materialIcon: 'sensors',
       badge: isConnected ? 'LIVE' : null,
     },
     {
       id: 'consent',
       label: 'Consent Status Grid',
       icon: LayoutGrid,
-      materialIcon: 'grid_view',
     },
     {
       id: 'anomalies',
       label: 'Governance Anomaly Log',
       icon: AlertTriangle,
-      materialIcon: 'warning',
       badge: stats && stats.unresolved_anomalies > 0 ? stats.unresolved_anomalies : null,
     },
     {
       id: 'analytics',
       label: 'Regional & Pillar M&E',
       icon: GitFork,
-      materialIcon: 'account_tree',
     },
     {
       id: 'audit',
       label: 'Immutable Audit Trail',
       icon: History,
-      materialIcon: 'history',
+    },
+    {
+      id: 'exports',
+      label: 'Export Center (KDPA)',
+      icon: Download,
     },
   ];
 

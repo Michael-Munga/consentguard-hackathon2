@@ -23,14 +23,18 @@ import {
   HelpCircle,
   ShieldCheck,
   AlertTriangle,
+  Filter,
 } from 'lucide-react';
 import { useLiveData } from '../../context/LiveDataContext.js';
 import { useTheme } from '../../context/ThemeContext.js';
+import { REGION_COUNTIES, ALL_COUNTIES } from '../../lib/utils.js';
 import type { Pillar, Region } from '../../../types/index.js';
 
 export const RegionalAndPillarView: React.FC = () => {
   const { stats } = useLiveData();
   const { theme } = useTheme();
+  const [selectedRegion, setSelectedRegion] = React.useState<string>('ALL');
+  const [selectedCounty, setSelectedCounty] = React.useState<string>('ALL');
 
   if (!stats) {
     return (
@@ -48,8 +52,31 @@ export const RegionalAndPillarView: React.FC = () => {
     ? { backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px', color: '#f8fafc' }
     : { backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px', color: '#0f172a', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' };
 
+  const availableCounties = selectedRegion === 'ALL'
+    ? ALL_COUNTIES
+    : REGION_COUNTIES[selectedRegion] || ALL_COUNTIES;
+
+  const handleRegionChange = (newRegion: string) => {
+    setSelectedRegion(newRegion);
+    if (newRegion !== 'ALL') {
+      const validCounties = REGION_COUNTIES[newRegion] || [];
+      if (selectedCounty !== 'ALL' && !validCounties.includes(selectedCounty)) {
+        setSelectedCounty('ALL');
+      }
+    }
+  };
+
+  const handleCountyChange = (newCounty: string) => {
+    setSelectedCounty(newCounty);
+  };
+
   // 1. Regional Data (8 Kenyan Regions)
-  const regionalData = (Object.keys(stats.consent_by_region) as Region[]).map((r) => ({
+  const allRegions = Object.keys(stats.consent_by_region) as Region[];
+  const displayedRegions = selectedRegion === 'ALL'
+    ? allRegions
+    : allRegions.filter(r => r === selectedRegion);
+
+  const regionalData = displayedRegions.map((r) => ({
     region: r,
     grant_rate: stats.consent_by_region[r]?.grant_rate || 0,
     total: stats.consent_by_region[r]?.total || 0,
@@ -72,12 +99,30 @@ export const RegionalAndPillarView: React.FC = () => {
     return row;
   });
 
-  // 3. Purpose Breakdown Data (KPC Palette)
-  const purposeData = [
-    { name: 'Donor Reporting', value: 45, color: '#ED1C24' },
-    { name: 'Internal Analytics', value: 35, color: '#231F20' },
-    { name: 'Third-Party Sharing', value: 20, color: '#58595B' },
-  ];
+  // 3. Purpose Breakdown Data (Computed dynamically from real database stats)
+  const purposeColors: Record<string, string> = {
+    donor_reporting: '#ED1C24',
+    internal_analytics: '#006193',
+    third_party_sharing: '#58595B',
+  };
+  const purposeLabels: Record<string, string> = {
+    donor_reporting: 'Donor Reporting',
+    internal_analytics: 'Internal Analytics',
+    third_party_sharing: 'Third-Party Sharing',
+  };
+
+  const purposeData = stats.consents_by_purpose
+    ? (['donor_reporting', 'internal_analytics', 'third_party_sharing'] as const).map((p) => ({
+        name: purposeLabels[p] || p,
+        value: stats.consents_by_purpose?.[p]?.share_percent ?? 0,
+        count: stats.consents_by_purpose?.[p]?.granted ?? 0,
+        color: purposeColors[p] || '#ED1C24',
+      }))
+    : [
+        { name: 'Donor Reporting', value: 0, count: 0, color: '#ED1C24' },
+        { name: 'Internal Analytics', value: 0, count: 0, color: '#006193' },
+        { name: 'Third-Party Sharing', value: 0, count: 0, color: '#58595B' },
+      ];
 
   return (
     <div className="space-y-6">
@@ -96,6 +141,63 @@ export const RegionalAndPillarView: React.FC = () => {
             Coverage: <span className="font-bold text-[#191c1e] dark:text-white">47 Counties • 8 Regions</span>
           </span>
         </div>
+      </div>
+
+      {/* Cascading Filter Bar */}
+      <div className="bg-white dark:bg-[#231f20] p-4 rounded-xl border border-[#e2e4e9] dark:border-[#3a3839] shadow-ambient-md flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-[#58595b] dark:text-[#cdc4c5]">
+            <Filter className="w-3.5 h-3.5 text-[#bb0013]" />
+            <span>Region Scope:</span>
+          </div>
+          <select
+            value={selectedRegion}
+            onChange={(e) => handleRegionChange(e.target.value)}
+            className="text-xs bg-[#f8f9fb] dark:bg-[#121011] border border-[#e2e4e9] dark:border-[#3a3839] text-[#191c1e] dark:text-white px-3 py-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#bb0013] cursor-pointer"
+          >
+            <option value="ALL">All Regions (8 Regions)</option>
+            {Object.keys(REGION_COUNTIES).map((r) => (
+              <option key={r} value={r}>
+                {r} Region
+              </option>
+            ))}
+          </select>
+
+          <div className="flex items-center gap-2 text-xs font-semibold text-[#58595b] dark:text-[#cdc4c5]">
+            <span>County Scope:</span>
+          </div>
+          <select
+            value={selectedCounty}
+            onChange={(e) => handleCountyChange(e.target.value)}
+            className="text-xs bg-[#f8f9fb] dark:bg-[#121011] border border-[#e2e4e9] dark:border-[#3a3839] text-[#191c1e] dark:text-white px-3 py-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#bb0013] cursor-pointer"
+          >
+            <option value="ALL">
+              {selectedRegion === 'ALL' ? 'All Counties (47 Counties)' : `Counties in ${selectedRegion} (${availableCounties.length})`}
+            </option>
+            {availableCounties.map((c) => (
+              <option key={c} value={c}>
+                {c} County
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {(selectedRegion !== 'ALL' || selectedCounty !== 'ALL') && (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono bg-red-50 dark:bg-red-950/40 text-[#bb0013] dark:text-[#ffb4ab] border border-red-200 dark:border-red-900/40 px-2.5 py-1 rounded-full">
+              Filtered: {selectedRegion !== 'ALL' ? `${selectedRegion} Region` : 'All Regions'} {selectedCounty !== 'ALL' ? `• ${selectedCounty}` : ''}
+            </span>
+            <button
+              onClick={() => {
+                setSelectedRegion('ALL');
+                setSelectedCounty('ALL');
+              }}
+              className="text-xs text-red-600 hover:text-red-700 underline font-medium cursor-pointer"
+            >
+              Reset Filters
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Bento Grid Layout */}

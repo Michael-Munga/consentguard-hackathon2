@@ -1,19 +1,14 @@
 import React, { useState, Component, type ErrorInfo, type ReactNode } from 'react';
 import { ThemeProvider } from './context/ThemeContext.js';
-import { LiveDataProvider, useLiveData } from './context/LiveDataContext.js';
-import { Header } from './components/layout/Header.js';
-import { Sidebar, type TabType } from './components/layout/Sidebar.js';
-import { KpiCards } from './components/layout/KpiCards.js';
-import { AnomalyAlertBanner } from './components/common/AnomalyAlertBanner.js';
-import { LiveActivityFeed } from './components/views/LiveActivityFeed.js';
-import { ConsentStatusOverview } from './components/views/ConsentStatusOverview.js';
-import { AnomalyLog } from './components/views/AnomalyLog.js';
-import { RegionalAndPillarView } from './components/views/RegionalAndPillarView.js';
-import { AuditTrailViewer } from './components/views/AuditTrailViewer.js';
-import { ProvenanceReportModal } from './components/modals/ProvenanceReportModal.js';
-import { DonorReportModal } from './components/modals/DonorReportModal.js';
-import { LineageModal } from './components/modals/LineageModal.js';
-import { BeneficiaryDirectoryModal } from './components/modals/BeneficiaryDirectoryModal.js';
+import { LiveDataProvider } from './context/LiveDataContext.js';
+import { AuthProvider, useAuth } from './context/AuthContext.js';
+import { BeneficiaryLogin } from './components/auth/BeneficiaryLogin.js';
+import { StaffLogin } from './components/auth/StaffLogin.js';
+import { BeneficiaryPortal } from './components/beneficiary/BeneficiaryPortal.js';
+import { ComplianceLayout } from './components/compliance/ComplianceLayout.js';
+import { FieldOfficerLayout } from './components/field/FieldOfficerLayout.js';
+import { AnalystLayout } from './components/analyst/AnalystLayout.js';
+import { DemoSwitcher } from './components/common/DemoSwitcher.js';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface ErrorBoundaryProps {
@@ -66,71 +61,42 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-const MainDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('feed');
-  const [isProvenanceOpen, setIsProvenanceOpen] = useState(false);
-  const [isDonorReportOpen, setIsDonorReportOpen] = useState(false);
-  const [isLineageOpen, setIsLineageOpen] = useState(false);
-  const [isBeneficiaryDirectoryOpen, setIsBeneficiaryDirectoryOpen] = useState(false);
+const AppRouter: React.FC = () => {
+  const { isAuthenticated, role, isLoading } = useAuth();
+  const [authView, setAuthView] = useState<'beneficiary' | 'staff'>('staff');
 
-  return (
-    <div className="min-h-screen bg-[#f8f9fb] dark:bg-[#191c1e] text-[#191c1e] dark:text-[#f0f1f3] flex flex-col font-sans transition-colors duration-150">
-      {/* Real-time Critical Breach Alert Banner */}
-      <AnomalyAlertBanner onNavigateToAnomalies={() => setActiveTab('anomalies')} />
-
-      {/* Left Fixed SideNavBar (260px) */}
-      <Sidebar
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
-        onOpenLineage={() => setIsLineageOpen(true)}
-      />
-
-      {/* Top Fixed Header (72px) */}
-      <Header
-        onOpenProvenance={() => setIsProvenanceOpen(true)}
-        onOpenDonorReport={() => setIsDonorReportOpen(true)}
-        onOpenLineage={() => setIsLineageOpen(true)}
-        onNavigateHome={() => setActiveTab('feed')}
-      />
-
-      {/* Main Content Canvas */}
-      <div className="md:ml-[260px] pt-[72px] min-h-screen flex flex-col flex-1">
-        <main className="p-6 max-w-[1440px] w-full mx-auto flex-1 pb-16">
-          {/* Top KPI Metric Cards */}
-          <KpiCards
-            onSelectTab={setActiveTab}
-            onOpenBeneficiaries={() => setIsBeneficiaryDirectoryOpen(true)}
-          />
-
-          <ErrorBoundary>
-            {/* Active Module View */}
-            {activeTab === 'feed' && <LiveActivityFeed />}
-            {activeTab === 'consent' && <ConsentStatusOverview />}
-            {activeTab === 'anomalies' && <AnomalyLog />}
-            {activeTab === 'analytics' && <RegionalAndPillarView />}
-            {activeTab === 'audit' && <AuditTrailViewer />}
-          </ErrorBoundary>
-        </main>
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fb] dark:bg-[#121011] flex flex-col items-center justify-center space-y-4">
+        <div className="w-12 h-12 border-4 border-[#bb0013]/20 border-t-[#bb0013] rounded-full animate-spin" />
+        <p className="text-xs font-mono text-[#58595b] dark:text-[#cdc4c5]">Initializing ConsentGuard Fabric...</p>
       </div>
+    );
+  }
 
-      {/* Specialized Governance Modals */}
-      <BeneficiaryDirectoryModal
-        isOpen={isBeneficiaryDirectoryOpen}
-        onClose={() => setIsBeneficiaryDirectoryOpen(false)}
-      />
-      <ProvenanceReportModal
-        isOpen={isProvenanceOpen}
-        onClose={() => setIsProvenanceOpen(false)}
-      />
-      <DonorReportModal
-        isOpen={isDonorReportOpen}
-        onClose={() => setIsDonorReportOpen(false)}
-      />
-      <LineageModal
-        isOpen={isLineageOpen}
-        onClose={() => setIsLineageOpen(false)}
-      />
-    </div>
+  // Not logged in: Show either Beneficiary Login or Staff Login
+  if (!isAuthenticated || !role) {
+    return (
+      <>
+        {authView === 'beneficiary' ? (
+          <BeneficiaryLogin onSwitchToStaff={() => setAuthView('staff')} />
+        ) : (
+          <StaffLogin onSwitchToBeneficiary={() => setAuthView('beneficiary')} />
+        )}
+        <DemoSwitcher />
+      </>
+    );
+  }
+
+  // Role-Based Router
+  return (
+    <ErrorBoundary>
+      {role === 'beneficiary' && <BeneficiaryPortal />}
+      {role === 'compliance_officer' && <ComplianceLayout />}
+      {role === 'field_officer' && <FieldOfficerLayout />}
+      {role === 'analyst' && <AnalystLayout />}
+      <DemoSwitcher />
+    </ErrorBoundary>
   );
 };
 
@@ -138,7 +104,9 @@ export const App: React.FC = () => {
   return (
     <ThemeProvider>
       <LiveDataProvider>
-        <MainDashboard />
+        <AuthProvider>
+          <AppRouter />
+        </AuthProvider>
       </LiveDataProvider>
     </ThemeProvider>
   );

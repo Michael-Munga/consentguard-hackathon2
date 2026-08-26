@@ -12,16 +12,128 @@ import {
   User,
   ArrowRight,
   CheckCircle2,
+  Copy,
 } from 'lucide-react';
 import { useLiveData } from '../../context/LiveDataContext.js';
 import type { AuditLog } from '../../../types/index.js';
 import { formatDateTime } from '../../lib/utils.js';
-import {
-  StateTransitionInspectorModal,
-  StateTransitionRecordView,
-} from '../modals/StateTransitionInspectorModal.js';
+import { Pagination } from '../common/Pagination.js';
 
-export { StateTransitionInspectorModal, StateTransitionRecordView };
+interface AuditLogDiffModalProps {
+  isOpen: boolean;
+  log: AuditLog | null;
+  onClose: () => void;
+}
+
+export const AuditLogDiffModal: React.FC<AuditLogDiffModalProps> = ({ isOpen, log, onClose }) => {
+  if (!isOpen || !log) return null;
+
+  const parseJson = (str: string | null) => {
+    if (!str) return null;
+    try {
+      return JSON.parse(str);
+    } catch {
+      return str;
+    }
+  };
+
+  const beforeJson = parseJson(log.before_state);
+  const afterJson = parseJson(log.after_state);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-sm">
+      <div className="bg-white dark:bg-[#231f20] border border-[#e2e4e9] dark:border-[#3a3839] rounded-2xl max-w-3xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
+        {/* Modal Header */}
+        <div className="flex items-center justify-between pb-4 border-b border-[#e2e4e9] dark:border-[#3a3839] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+              <ScrollText className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-[#191c1e] dark:text-white flex items-center gap-2">
+                <span>Audit Ledger Proof: {log.action}</span>
+              </h3>
+              <p className="text-xs font-mono text-[#58595b] dark:text-[#cdc4c5]">
+                ID: {log.id} • Entity: {log.entity_type} ({log.entity_id})
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-1.5 text-[#58595b] dark:text-[#cdc4c5] hover:text-[#191c1e] dark:hover:text-white rounded-lg hover:bg-[#f8f9fb] dark:hover:bg-[#2a2627] cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <div className="mt-4 overflow-y-auto flex-1 space-y-4 pr-1 text-xs">
+          {/* Metadata Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-[#f8f9fb] dark:bg-[#191c1e] p-3 rounded-xl border border-[#e2e4e9] dark:border-[#3a3839]">
+              <span className="text-[10px] text-[#58595b] dark:text-[#cdc4c5] uppercase font-mono block">Actor Identity</span>
+              <span className="font-mono font-bold text-[#191c1e] dark:text-white break-all">{log.actor}</span>
+            </div>
+            <div className="bg-[#f8f9fb] dark:bg-[#191c1e] p-3 rounded-xl border border-[#e2e4e9] dark:border-[#3a3839]">
+              <span className="text-[10px] text-[#58595b] dark:text-[#cdc4c5] uppercase font-mono block">Recorded Timestamp</span>
+              <span className="font-mono font-bold text-[#191c1e] dark:text-white">{formatDateTime(log.timestamp)}</span>
+            </div>
+            <div className="bg-[#f8f9fb] dark:bg-[#191c1e] p-3 rounded-xl border border-[#e2e4e9] dark:border-[#3a3839]">
+              <span className="text-[10px] text-[#58595b] dark:text-[#cdc4c5] uppercase font-mono block">Ledger Verification</span>
+              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Cryptographically Sealed
+              </span>
+            </div>
+          </div>
+
+          {/* Before & After State Diff */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+            <div>
+              <span className="text-[11px] font-mono font-bold text-[#58595b] dark:text-[#cdc4c5] block mb-1.5">
+                Before State (Prior)
+              </span>
+              <div className="bg-[#f8f9fb] dark:bg-[#121011] p-3.5 rounded-xl border border-[#e2e4e9] dark:border-[#3a3839] font-mono text-[11px] overflow-x-auto min-h-[140px]">
+                {beforeJson ? (
+                  <pre className="text-[#191c1e] dark:text-[#e2e4e9] whitespace-pre-wrap">
+                    {typeof beforeJson === 'object' ? JSON.stringify(beforeJson, null, 2) : beforeJson}
+                  </pre>
+                ) : (
+                  <span className="text-[#58595b] italic">null (Initial Creation / Genesis)</span>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <span className="text-[11px] font-mono font-bold text-[#58595b] dark:text-[#cdc4c5] block mb-1.5">
+                After State (Mutated)
+              </span>
+              <div className="bg-[#f8f9fb] dark:bg-[#121011] p-3.5 rounded-xl border border-[#e2e4e9] dark:border-[#3a3839] font-mono text-[11px] overflow-x-auto min-h-[140px]">
+                {afterJson ? (
+                  <pre className="text-emerald-700 dark:text-emerald-300 whitespace-pre-wrap">
+                    {typeof afterJson === 'object' ? JSON.stringify(afterJson, null, 2) : afterJson}
+                  </pre>
+                ) : (
+                  <span className="text-[#58595b] italic">null (Deleted / Purged)</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Modal Footer */}
+        <div className="mt-4 pt-3 border-t border-[#e2e4e9] dark:border-[#3a3839] flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-[#f8f9fb] dark:bg-[#191c1e] hover:bg-[#edeef0] text-[#191c1e] dark:text-white rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer border border-[#e2e4e9] dark:border-[#3a3839]"
+          >
+            Close Proof
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const AuditTrailViewer: React.FC = () => {
   const { stats } = useLiveData();
@@ -31,7 +143,7 @@ export const AuditTrailViewer: React.FC = () => {
   const [entityFilter, setEntityFilter] = useState<string>('ALL');
   const [inspectedLog, setInspectedLog] = useState<AuditLog | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 15;
+  const [pageSize, setPageSize] = useState(15);
 
   const fetchLogs = async () => {
     try {
@@ -71,11 +183,12 @@ export const AuditTrailViewer: React.FC = () => {
     return true;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
-  const validPage = Math.min(currentPage, totalPages);
-  const paginatedLogs = filteredLogs.slice((validPage - 1) * PAGE_SIZE, validPage * PAGE_SIZE);
+  const paginatedLogs = filteredLogs.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
 
-  const entityTypes = ['ALL', 'beneficiary', 'consent_record', 'anomaly', 'data_access_breach'];
+  const entityTypes = ['ALL', 'beneficiary', 'consent_record', 'anomaly', 'compliance_export'];
 
   return (
     <div className="space-y-6">
@@ -86,7 +199,7 @@ export const AuditTrailViewer: React.FC = () => {
             Immutable Audit Trail
           </h1>
           <p className="text-xs text-[#58595b] dark:text-[#cdc4c5] mt-0.5">
-            Cryptographically sealed, append-only ledger of all beneficiary lifecycle mutations and consent verifications
+            Cryptographically sealed, append-only ledger of all beneficiary mutations and digital consent verifications
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -196,37 +309,21 @@ export const AuditTrailViewer: React.FC = () => {
           </table>
         </div>
 
-        {/* Pagination */}
-        {filteredLogs.length > PAGE_SIZE && (
-          <div className="p-4 border-t border-[#e2e4e9] dark:border-[#3a3839] flex items-center justify-between text-xs font-mono">
-            <span className="text-[#58595b] dark:text-[#cdc4c5]">
-              Showing {(validPage - 1) * PAGE_SIZE + 1} to {Math.min(validPage * PAGE_SIZE, filteredLogs.length)} of {filteredLogs.length} ledger blocks
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={validPage === 1}
-                className="px-2.5 py-1 rounded bg-[#f8f9fb] dark:bg-[#191c1e] border border-[#e2e4e9] dark:border-[#3a3839] text-[#58595b] disabled:opacity-40 cursor-pointer"
-              >
-                Prev
-              </button>
-              <span className="px-2 py-0.5 bg-[#ffdad6] text-[#ba1a1a] dark:bg-[#93000d] dark:text-[#ffdad6] rounded font-bold">
-                {validPage} / {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={validPage === totalPages}
-                className="px-2.5 py-1 rounded bg-[#f8f9fb] dark:bg-[#191c1e] border border-[#e2e4e9] dark:border-[#3a3839] text-[#58595b] disabled:opacity-40 cursor-pointer"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+        {/* Pagination Footer */}
+        {filteredLogs.length > 0 && (
+          <Pagination
+            currentPage={currentPage}
+            totalItems={filteredLogs.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+            pageSizeOptions={[10, 15, 25, 50, 100]}
+          />
         )}
       </div>
 
-      {/* State Transition Inspector Modal */}
-      <StateTransitionInspectorModal
+      {/* Audit Log Diff Modal */}
+      <AuditLogDiffModal
         isOpen={Boolean(inspectedLog)}
         log={inspectedLog}
         onClose={() => setInspectedLog(null)}

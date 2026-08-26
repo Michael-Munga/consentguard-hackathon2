@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import type {
-  LifecycleStage,
   ConsentPurpose,
   ConsentRecord,
   DataAccessEvent,
@@ -11,148 +10,7 @@ import type {
 } from '../../types/index.js';
 
 // ============================================================================
-// 1. STAGE SEQUENCE VALIDATION (Multi-stage Checkpoint Validation)
-// ============================================================================
-export const ORDERED_STAGES: LifecycleStage[] = [
-  'applied',
-  'identity_verified',
-  'consent_requested',
-  'consent_granted',
-  'data_processed',
-  'consent_reviewed',
-];
-
-const STAGE_INDEX: Record<LifecycleStage, number> = {
-  applied: 0,
-  identity_verified: 1,
-  consent_requested: 2,
-  consent_granted: 3,
-  data_processed: 4,
-  consent_reviewed: 5,
-};
-
-export interface StageValidationResult {
-  isValid: boolean;
-  anomaly?: {
-    type: AnomalyType;
-    severity: 'low' | 'medium' | 'critical';
-    detail: string;
-  };
-}
-
-export function validateLifecycleTransition(
-  fromStage: LifecycleStage | null,
-  toStage: LifecycleStage
-): StageValidationResult {
-  // Initial application from null -> applied is valid
-  if (fromStage === null) {
-    if (toStage === 'applied') {
-      return { isValid: true };
-    }
-    return {
-      isValid: false,
-      anomaly: {
-        type: 'SKIPPED_IDENTITY_VERIFICATION',
-        severity: 'medium',
-        detail: `Invalid initial transition directly to '${toStage}' without initial 'applied' stage.`,
-      },
-    };
-  }
-
-  const fromIdx = STAGE_INDEX[fromStage];
-  const toIdx = STAGE_INDEX[toStage];
-
-  // Normal consecutive forward progression
-  if (toIdx === fromIdx + 1) {
-    return { isValid: true };
-  }
-
-  // Renewal / re-request loop from consent_reviewed
-  if (fromStage === 'consent_reviewed' && (toStage === 'consent_granted' || toStage === 'consent_requested')) {
-    return { isValid: true };
-  }
-
-  // Same stage no-op or duplicate transition
-  if (toIdx === fromIdx) {
-    return {
-      isValid: false,
-      anomaly: {
-        type: 'INVALID_STAGE_REGRESSION',
-        severity: 'low',
-        detail: `Redundant transition to current stage '${toStage}'.`,
-      },
-    };
-  }
-
-  // Backward regression
-  if (toIdx < fromIdx) {
-    return {
-      isValid: false,
-      anomaly: {
-        type: 'INVALID_STAGE_REGRESSION',
-        severity: 'medium',
-        detail: `Illegal lifecycle regression from '${fromStage}' (step ${fromIdx + 1}) back to '${toStage}' (step ${toIdx + 1}).`,
-      },
-    };
-  }
-
-  // Skipped stages in forward progression
-  if (fromStage === 'applied' && toStage === 'consent_granted') {
-    return {
-      isValid: false,
-      anomaly: {
-        type: 'SKIPPED_IDENTITY_VERIFICATION',
-        severity: 'medium',
-        detail: `Skipped 'identity_verified' and 'consent_requested' stages: transition jumped from 'applied' directly to 'consent_granted'.`,
-      },
-    };
-  }
-
-  if (fromStage === 'applied' && toStage === 'data_processed') {
-    return {
-      isValid: false,
-      anomaly: {
-        type: 'SKIPPED_CONSENT_GRANT',
-        severity: 'critical',
-        detail: `Critical jump from 'applied' to 'data_processed' skipping identity verification, consent request, and consent grant.`,
-      },
-    };
-  }
-
-  if (fromStage === 'identity_verified' && toStage === 'consent_granted') {
-    return {
-      isValid: false,
-      anomaly: {
-        type: 'SKIPPED_CONSENT_REQUEST',
-        severity: 'medium',
-        detail: `Skipped formal 'consent_requested' stage: transitioned from 'identity_verified' directly to 'consent_granted'.`,
-      },
-    };
-  }
-
-  if ((fromStage === 'identity_verified' || fromStage === 'consent_requested') && toStage === 'data_processed') {
-    return {
-      isValid: false,
-      anomaly: {
-        type: 'SKIPPED_CONSENT_GRANT',
-        severity: 'critical',
-        detail: `Critical lifecycle violation: data processed without required 'consent_granted' milestone.`,
-      },
-    };
-  }
-
-  return {
-    isValid: false,
-    anomaly: {
-      type: 'SKIPPED_IDENTITY_VERIFICATION',
-      severity: 'medium',
-      detail: `Invalid transition sequence from '${fromStage}' to '${toStage}' (skipped intermediate milestones).`,
-    },
-  };
-}
-
-// ============================================================================
-// 2. ENTITY-LEVEL CONSENT CONFLICT DETECTION
+// 1. ENTITY-LEVEL CONSENT CONFLICT DETECTION (Gate 1)
 // ============================================================================
 export interface ConsentConflictResult {
   hasConflict: boolean;
@@ -193,7 +51,7 @@ export function detectConsentConflict(
       return {
         hasConflict: true,
         anomaly: {
-          type: 'CONSENT_OVERLAP_CONFLICT',
+          type: 'INCONSISTENT_CONSENT_STATE',
           severity: 'critical',
           detail: `Entity consent overlap detected for beneficiary ${newRecord.beneficiary_id} on purpose '${newRecord.purpose}'. Active grant '${record.id}' already exists without prior revocation.`,
         },

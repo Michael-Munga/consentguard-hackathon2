@@ -21,6 +21,7 @@ import {
   getPillarBadgeClass,
 } from '../../lib/utils.js';
 import { AnomalyDetailModal } from '../modals/AnomalyDetailModal.js';
+import { Pagination } from '../common/Pagination.js';
 
 export const AnomalyLog: React.FC = () => {
   const { stats, markAnomalyReviewed } = useLiveData();
@@ -31,7 +32,7 @@ export const AnomalyLog: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'UNRESOLVED' | 'REVIEWED'>('UNRESOLVED');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 8;
+  const [pageSize, setPageSize] = useState(10);
 
   // Selected anomaly for detail modal
   const [selectedAnomaly, setSelectedAnomaly] = useState<AnomalyEvent | null>(null);
@@ -81,9 +82,10 @@ export const AnomalyLog: React.FC = () => {
     return true;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredAnomalies.length / PAGE_SIZE));
-  const validPage = Math.min(currentPage, totalPages);
-  const paginatedAnomalies = filteredAnomalies.slice((validPage - 1) * PAGE_SIZE, validPage * PAGE_SIZE);
+  const paginatedAnomalies = filteredAnomalies.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
 
   const handleOpenReview = (a: Anomaly) => {
     setReviewNotes('');
@@ -134,9 +136,9 @@ export const AnomalyLog: React.FC = () => {
       </div>
 
       {/* 12-Column Responsive Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left 8 Cols: Review Queue Table */}
-        <div className="lg:col-span-8 space-y-4">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+        {/* Left: Review Queue Table */}
+        <div className="xl:col-span-9 space-y-4">
           {/* Filter Bar */}
           <div className="bg-white dark:bg-[#231f20] border border-[#e2e4e9] dark:border-[#3a3839] rounded-xl p-4 shadow-ambient-md flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -194,11 +196,11 @@ export const AnomalyLog: React.FC = () => {
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-[#edeef0]/60 dark:bg-[#2e2a2b]/60 border-b border-[#e2e4e9] dark:border-[#3a3839] font-mono text-[11px] text-[#58595b] dark:text-[#cdc4c5] uppercase tracking-wider">
                   <tr>
-                    <th className="py-3.5 px-4 font-semibold">Severity</th>
-                    <th className="py-3.5 px-4 font-semibold">Anomaly Type</th>
-                    <th className="py-3.5 px-4 font-semibold">Beneficiary Context</th>
-                    <th className="py-3.5 px-4 font-semibold">Detected At</th>
-                    <th className="py-3.5 px-4 text-right font-semibold">Action</th>
+                    <th className="py-3 px-3 font-semibold whitespace-nowrap">Severity</th>
+                    <th className="py-3 px-3 font-semibold">Anomaly Type</th>
+                    <th className="py-3 px-3 font-semibold">Beneficiary Context</th>
+                    <th className="py-3 px-3 font-semibold whitespace-nowrap">Detected At</th>
+                    <th className="py-3 px-3 text-right font-semibold whitespace-nowrap">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#e2e4e9] dark:divide-[#3a3839]">
@@ -212,6 +214,11 @@ export const AnomalyLog: React.FC = () => {
                   ) : (
                     paginatedAnomalies.map((a) => {
                       const isCritical = a.severity === 'critical';
+                      const isMlOutlier = a.anomaly_type === 'AI_BEHAVIORAL_OUTLIER' ||
+                                          a.anomaly_type === 'SUSPICIOUS_BULK_EXFILTRATION' ||
+                                          a.detail?.includes('[ML Anomaly Score:');
+                      const threatScoreMatch = a.detail?.match(/ML Anomaly Score:\s*(\d+)\/100/);
+                      const threatScore = threatScoreMatch ? parseInt(threatScoreMatch[1], 10) : null;
 
                       return (
                         <tr
@@ -221,31 +228,47 @@ export const AnomalyLog: React.FC = () => {
                             isCritical && !a.reviewed ? 'bg-[#ffdad6]/20 dark:bg-[#93000d]/10' : ''
                           }`}
                         >
-                          <td className="py-3.5 px-4 whitespace-nowrap">
-                            {isCritical ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#ffdad6] text-[#ba1a1a] dark:bg-[#93000d] dark:text-[#ffdad6]">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[#ba1a1a] blinking-indicator"></span>
-                                CRITICAL
-                              </span>
-                            ) : a.severity === 'medium' ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#fef3c7] text-[#92400e] dark:bg-amber-950/60 dark:text-amber-300">
-                                ELEVATED
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#f3f4f6] text-[#58595b] dark:bg-[#3a3839] dark:text-[#cdc4c5]">
-                                STANDARD
-                              </span>
-                            )}
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {isCritical ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#ffdad6] text-[#ba1a1a] dark:bg-[#93000d] dark:text-[#ffdad6]">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#ba1a1a] blinking-indicator"></span>
+                                  CRITICAL
+                                </span>
+                              ) : a.severity === 'medium' ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#fef3c7] text-[#92400e] dark:bg-amber-950/60 dark:text-amber-300">
+                                  ELEVATED
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#f3f4f6] text-[#58595b] dark:bg-[#3a3839] dark:text-[#cdc4c5]">
+                                  STANDARD
+                                </span>
+                              )}
+
+                              {isMlOutlier && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                  <Sparkles className="w-2.5 h-2.5" />
+                                  ML Outlier
+                                </span>
+                              )}
+                            </div>
                           </td>
 
-                          <td className="py-3.5 px-4 font-mono font-bold text-xs text-[#191c1e] dark:text-white max-w-[200px] truncate">
-                            {a.anomaly_type.replace(/_/g, ' ')}
-                            <p className="text-[11px] font-sans font-normal text-[#58595b] dark:text-[#cdc4c5] truncate mt-0.5">
+                          <td className="py-3 px-3 font-mono font-bold text-xs text-[#191c1e] dark:text-white">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span>{a.anomaly_type.replace(/_/g, ' ')}</span>
+                              {threatScore !== null && (
+                                <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200 border border-purple-200 dark:border-purple-800">
+                                  Threat Index: {threatScore}/100
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] font-sans font-normal text-[#58595b] dark:text-[#cdc4c5] line-clamp-2 mt-0.5 max-w-md">
                               {a.detail}
                             </p>
                           </td>
 
-                          <td className="py-3.5 px-4 whitespace-nowrap">
+                          <td className="py-3 px-3 whitespace-nowrap">
                             <div className="font-bold text-xs text-[#191c1e] dark:text-white">
                               {a.beneficiary_name || a.beneficiary_id}
                             </div>
@@ -254,11 +277,11 @@ export const AnomalyLog: React.FC = () => {
                             </div>
                           </td>
 
-                          <td className="py-3.5 px-4 font-mono text-[11px] text-[#58595b] dark:text-[#cdc4c5] whitespace-nowrap">
+                          <td className="py-3 px-3 font-mono text-[11px] text-[#58595b] dark:text-[#cdc4c5] whitespace-nowrap">
                             {formatDateTime(a.detected_at)}
                           </td>
 
-                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                          <td className="py-3 px-3 text-right whitespace-nowrap">
                             {a.reviewed ? (
                               <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-[#10B981]">
                                 <CheckCircle2 className="w-3.5 h-3.5" /> Reviewed
@@ -269,7 +292,7 @@ export const AnomalyLog: React.FC = () => {
                                   e.stopPropagation();
                                   handleOpenReview(a);
                                 }}
-                                className={`font-mono text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                                className={`font-mono text-xs font-bold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
                                   isCritical
                                     ? 'bg-[#bb0013] text-white hover:bg-[#93000d] shadow-xs'
                                     : 'bg-[#191c1e] text-white hover:bg-black dark:bg-[#3a3839] dark:hover:bg-[#4a4849]'
@@ -288,37 +311,21 @@ export const AnomalyLog: React.FC = () => {
             </div>
 
             {/* Pagination Footer */}
-            {filteredAnomalies.length > PAGE_SIZE && (
-              <div className="p-4 border-t border-[#e2e4e9] dark:border-[#3a3839] flex items-center justify-between text-xs font-mono">
-                <span className="text-[#58595b] dark:text-[#cdc4c5]">
-                  Showing {(validPage - 1) * PAGE_SIZE + 1} to {Math.min(validPage * PAGE_SIZE, filteredAnomalies.length)} of {filteredAnomalies.length} anomalies
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={validPage === 1}
-                    className="px-2.5 py-1 rounded bg-[#f8f9fb] dark:bg-[#191c1e] border border-[#e2e4e9] dark:border-[#3a3839] text-[#58595b] disabled:opacity-40 cursor-pointer"
-                  >
-                    Prev
-                  </button>
-                  <span className="px-2 py-0.5 bg-[#ffdad6] text-[#ba1a1a] dark:bg-[#93000d] dark:text-[#ffdad6] rounded font-bold">
-                    {validPage} / {totalPages}
-                  </span>
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={validPage === totalPages}
-                    className="px-2.5 py-1 rounded bg-[#f8f9fb] dark:bg-[#191c1e] border border-[#e2e4e9] dark:border-[#3a3839] text-[#58595b] disabled:opacity-40 cursor-pointer"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
+            {filteredAnomalies.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalItems={filteredAnomalies.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+                pageSizeOptions={[5, 10, 20, 50]}
+              />
             )}
           </div>
         </div>
 
-        {/* Right 4 Cols: At a Glance Severity & DPO Escalation Card */}
-        <div className="lg:col-span-4 space-y-4">
+        {/* Right: At a Glance Severity & DPO Escalation Card */}
+        <div className="xl:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-4">
           {/* At a Glance Severity Card */}
           <div className="bg-white dark:bg-[#231f20] rounded-xl border border-[#e2e4e9] dark:border-[#3a3839] p-5 shadow-ambient-md space-y-4">
             <h3 className="font-bold text-sm text-[#191c1e] dark:text-white uppercase font-mono tracking-wider border-b border-[#e2e4e9] dark:border-[#3a3839] pb-3">

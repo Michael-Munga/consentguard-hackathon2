@@ -58,7 +58,7 @@ Under Section 62 and Section 63 of the Kenya Data Protection Act, 2019, the Offi
 Major institutional donors and philanthropic partners typically require verifiable data governance practices and provable consent provenance as a prerequisite for large-scale grant disbursements. Demonstrating a cryptographically verifiable **ETL Provenance Audit Trail** and automated **KDPA Principles-Compliant Pseudonymization** positions the KPC Inuka Foundation as a regional benchmark in institutional data stewardship.
 
 ### 5.3 Operational Efficiency and M&E Scalability
-By automating multi-stage lifecycle verification (ensuring beneficiaries do not skip identity checks or enter data processing without consent) and generating real-time statistical anomaly monitoring (2-sigma cohort drift), the Foundation can scale intake from hundreds to tens of thousands of beneficiaries without requiring proportional headcount increases in compliance administration.
+By automating multi-layer digital consent verification (ensuring unauthorized access is blocked synchronously at write-time) and generating real-time statistical anomaly monitoring (2-sigma cohort drift), the Foundation can scale intake from hundreds to tens of thousands of beneficiaries without requiring proportional headcount increases in compliance administration.
 
 ---
 

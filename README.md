@@ -28,10 +28,7 @@ ConsentGuard directly builds upon and upgrades the architectural principles esta
 
 ### Architectural Lineage: Side-by-Side Comparison
 
-| Architectural Pattern | Stage 1: FlowMaster (Depot Ops) | Stage 2: ConsentGuard (Beneficiary Privacy Fabric) | Architectural Lineage Rationale |
-| :--- | :--- | :--- | :--- |
-| **Foundational Batch Validation & Data Layer** | **Python 3 + pandas + Data Quality Validation Engine**: Ingested historical CSV depot batch exports and validated sequence & truck turnaround times. | **Python 3 + pandas + Great Expectations (Ephemeral In-Memory Engine)**: Ingests raw Inuka beneficiary CSV exports, executes 7 automated Great Expectations rules, logs rejected rows with full audit trails, and writes clean baseline data to SQLite. | **Direct 1:1 Engineering Lineage**: Genuine Python batch foundation upgraded with Great Expectations (matching the fellowship syllabus). |
-| **Multi-Stage Sequence Validation** | **7-Checkpoint Depot Journey** (`gate-in` → `security` → `weighbridge-in` → `bay-assigned` → `loading-start` → `loading-end` → `weighbridge-out` → `gate-out`). Validated every consecutive checkpoint pair individually with dedicated named anomaly types. | **6-Milestone Beneficiary Lifecycle** (`applied` → `identity_verified` → `consent_requested` → `consent_granted` → `data_processed` → `consent_reviewed`). Validates every consecutive stage transition with named anomaly types (e.g. `SKIPPED_IDENTITY_VERIFICATION`, `SKIPPED_CONSENT_GRANT`). | **Direct 1:1 Lineage**: Multi-stage state machine that rejects invalid jumps rather than checking only start/end states. |
+| **Multi-Stage Sequence Validation** | **7-Checkpoint Depot Journey** (`gate-in` → `security` → `weighbridge-in` → `bay-assigned` → `loading-start` → `loading-end` → `weighbridge-out` → `gate-out`). Validated every consecutive checkpoint pair individually with dedicated named anomaly types. | **5 KDPA Governance Gates** (Entity Overlap, Real-Time Write-Time Authorization, Metadata Integrity Flagging, 2-Sigma Statistical Cohort Drift, and Cryptographic Audit Ledger). Evaluated continuously across every data mutation. | **Direct 1:1 Lineage**: Multi-layer governance engine that intercepts violations at write time rather than checking only start/end states. |
 | **Entity-Level Cross-Record Detection** | **Truck Overlap Check**: Reasoned across multiple records over time for a single `truck_id` to catch physically impossible overlapping depot journeys. | **Consent Conflict Detection**: Evaluates a beneficiary's entire consent timeline to catch simultaneously active `granted` records for the exact same `purpose` without prior revocation or expiry. | **Temporal Entity Reasoning**: Evaluates records across an entity's timeline over time rather than validating a single row in isolation. |
 | **Write-Time Intercept (Core Demo Moment)** | Caught a truck physically unable to be in two locations simultaneously in real time. | **Synchronous Write-Time Authorization**: For every data access event, checks whether valid, active consent exists at `accessed_at`. If missing, immediately sets `was_valid = false` and commits a `critical` anomaly synchronously to SQLite. | **Real-Time Defense**: Intercepts breaches at the exact moment of access, not hours later in a batch job. |
 | **Statistical Outlier Detection** | **3× IQR Threshold** on turnaround time (not textbook 1.5×) deliberately chosen because depot queues possess a fat catastrophic-delay tail. | **Leave-One-Out 2-Sigma (Mean + 2σ) Threshold** on per-pillar weekly anomaly rates to detect programmatic drift without alert fatigue from normal intake variations. | **Deliberate Statistical Choices**: Thresholds are selected with stated, defensible mathematical reasoning specific to the operational cohort. |
@@ -149,15 +146,15 @@ In evaluating the Stage 2 data streaming requirement, we made a deliberate, prin
         │                                                     │
         ▼                                                     ▼
 ┌──────────────────┐                               ┌──────────────────────┐
-│ Lifecycle Engine │                               │ Data Access Gating   │
-│ (6 Milestones)   │                               │ (KDPA §25 Validator) │
+│ Consent Manager  │                               │ Data Access Gating   │
+│ (3 KDPA Purposes)│                               │ (KDPA §25 Validator) │
 └────────┬─────────┘                               └──────────┬───────────┘
          │                                                    │
          ├────────────────────────┬───────────────────────────┤
          ▼                        ▼                           ▼
 ┌─────────────────┐      ┌─────────────────┐        ┌───────────────────┐
-│ Gate 1: Sequence│      │ Gate 2: Entity  │        │ Gate 3: Write-Time│
-│ Check (No skips)│      │ Conflict Check  │        │ Consent Auth Gate │
+│ Gate 1: Entity  │      │ Gate 2: Write-  │        │ Gate 3: Metadata  │
+│ Conflict Check  │      │ Time Auth Gate  │        │ Integrity Flagging│
 └────────┬────────┘      └────────┬────────┘        └─────────┬─────────┘
          │                        │                           │
          └────────────────────────┼───────────────────────────┘
@@ -167,7 +164,6 @@ In evaluating the Stage 2 data streaming requirement, we made a deliberate, prin
                  │  - beneficiaries                │
                  │  - consent_records              │
                  │  - data_access_events           │
-                 │  - lifecycle_transitions        │
                  │  - anomalies (unresolved)       │
                  │  - audit_log (immutable)        │
                  └────────────────┬────────────────┘
@@ -223,7 +219,7 @@ Once started, open your browser at:
 ## 9. Interactive Feature Walkthrough & Verification Guide
 
 Follow these steps to explore and verify ConsentGuard's core operational capabilities:
-1. **Observe the Live Activity Feed**: Watch real-time synthetic beneficiary intakes, lifecycle milestones, and consent authorizations streaming over SSE every 2.5 seconds.
+1. **Observe the Live Activity Feed**: Watch real-time synthetic beneficiary intakes and consent authorizations streaming over SSE every 2.5 seconds.
 2. **Review the Consent Status Grid**: View the 2D Pivot Heatmap crossing Consent Status by Inuka Pillar (Scholarship, Plus, Vocational, Tech). Click any cell to drill into the specific beneficiary cohort.
 3. **Execute the Write-Time Breach Intercept Test**: Click the prominent red button **"⚡ Simulate Invalid Access Attempt"** in the top navigation bar.
    - Within **1 second**, a glowing, animated Critical Alert Banner will appear on screen.

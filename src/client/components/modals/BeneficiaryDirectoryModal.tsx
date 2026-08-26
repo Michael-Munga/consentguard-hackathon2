@@ -23,30 +23,52 @@ import {
   AlertTriangle,
   Download,
   Check,
+  User,
+  Eye,
+  FileCheck,
+  ShieldCheck,
+  Lock,
 } from 'lucide-react';
-import type { Beneficiary, Pillar, Region, County, LifecycleStage, ConsentRecord } from '../../../types/index.js';
-import { COUNTIES, COUNTY_TO_REGION, REGIONS } from '../../../types/index.js';
-import { getPillarBadgeClass, formatStageLabel, formatDateTime } from '../../lib/utils.js';
+import type { Beneficiary, Pillar, Region, County, ConsentRecord } from '../../../types/index.js';
+import { COUNTIES, COUNTY_TO_REGION, REGIONS, maskBeneficiaryName } from '../../../types/index.js';
+import { getPillarBadgeClass, formatDateTime } from '../../lib/utils.js';
 
 interface BeneficiaryDirectoryModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialBeneficiaryId?: string | null;
+  initialSearch?: string;
 }
 
 export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps> = ({
   isOpen,
   onClose,
+  initialBeneficiaryId = null,
+  initialSearch = '',
 }) => {
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [consents, setConsents] = useState<ConsentRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
   const [selectedPillar, setSelectedPillar] = useState<string>('ALL');
   const [selectedRegion, setSelectedRegion] = useState<string>('ALL');
   const [selectedCounty, setSelectedCounty] = useState<string>('ALL');
-  const [selectedStage, setSelectedStage] = useState<string>('ALL');
   const [selectedBeneficiary, setSelectedBeneficiary] = useState<Beneficiary | null>(null);
   const [isExported, setIsExported] = useState(false);
+  const [revealBeneficiaryId, setRevealBeneficiaryId] = useState<string | null>(initialBeneficiaryId || null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setRevealBeneficiaryId(initialBeneficiaryId || null);
+      if (initialSearch !== undefined) {
+        setSearchTerm(initialSearch);
+      }
+      setSelectedPillar('ALL');
+      setSelectedRegion('ALL');
+      setSelectedCounty('ALL');
+      setSelectedBeneficiary(null);
+    }
+  }, [isOpen, initialBeneficiaryId, initialSearch]);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -54,37 +76,42 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
 
   const pillars: Pillar[] = ['Scholarship', 'Plus', 'Vocational', 'Tech'];
   const regions: Region[] = REGIONS;
-  const stages: LifecycleStage[] = [
-    'applied',
-    'identity_verified',
-    'consent_requested',
-    'consent_granted',
-    'data_processed',
-    'consent_reviewed',
-  ];
 
   useEffect(() => {
     if (!isOpen) return;
+
+    let isMounted = true;
+    setIsLoading(true);
+
     const fetchData = async () => {
-      setIsLoading(true);
       try {
-        const [bRes, cRes] = await Promise.all([
+        const [benRes, consentRes] = await Promise.all([
           fetch('/api/beneficiaries'),
           fetch('/api/consents'),
         ]);
-        if (bRes.ok && cRes.ok) {
-          const bData = await bRes.json();
-          const cData = await cRes.json();
-          setBeneficiaries(bData.data || []);
-          setConsents(cData || []);
+
+        if (benRes.ok && isMounted) {
+          const benData = await benRes.json();
+          const list = Array.isArray(benData) ? benData : benData.data || [];
+          setBeneficiaries(list);
+        }
+
+        if (consentRes.ok && isMounted) {
+          const consentData = await consentRes.json();
+          setConsents(Array.isArray(consentData) ? consentData : []);
         }
       } catch (err) {
-        console.error('Error loading beneficiaries directory:', err);
+        console.error('Failed to load beneficiaries or consents:', err);
       } finally {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     };
+
     fetchData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [isOpen]);
 
   // Available counties dynamically filtered by selected region
@@ -96,7 +123,7 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
   // Reset pagination when search or filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedPillar, selectedRegion, selectedCounty, selectedStage, pageSize]);
+  }, [searchTerm, selectedPillar, selectedRegion, selectedCounty, pageSize]);
 
   // Group consents by beneficiary_id
   const consentsByBenId = useMemo(() => {
@@ -109,13 +136,20 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
     return map;
   }, [consents]);
 
-  // Filter beneficiaries
+  // Target beneficiary for single-record reveal mode
+  const targetBeneficiary = useMemo(() => {
+    if (!revealBeneficiaryId) return null;
+    return beneficiaries.find(
+      (b) => b.id.toLowerCase() === revealBeneficiaryId.toLowerCase()
+    ) || null;
+  }, [beneficiaries, revealBeneficiaryId]);
+
+  // Filter beneficiaries for general directory mode
   const filteredBeneficiaries = useMemo(() => {
     return beneficiaries.filter((b) => {
       if (selectedPillar !== 'ALL' && b.pillar !== selectedPillar) return false;
       if (selectedRegion !== 'ALL' && b.region !== selectedRegion) return false;
       if (selectedCounty !== 'ALL' && b.county !== selectedCounty) return false;
-      if (selectedStage !== 'ALL' && b.current_stage !== selectedStage) return false;
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase();
         return (
@@ -128,7 +162,7 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
       }
       return true;
     });
-  }, [beneficiaries, selectedPillar, selectedRegion, selectedCounty, selectedStage, searchTerm]);
+  }, [beneficiaries, selectedPillar, selectedRegion, selectedCounty, searchTerm]);
 
   // Paginated records
   const totalPages = Math.max(1, Math.ceil(filteredBeneficiaries.length / pageSize));
@@ -140,7 +174,7 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
 
   if (!isOpen) return null;
 
-  // Export as formatted Excel Spreadsheet (.xlsx)
+  // Export as formatted Excel Spreadsheet (.xlsx) - Identity Pseudonymized under KDPA Sec 25
   const handleExportExcel = () => {
     if (!filteredBeneficiaries || filteredBeneficiaries.length === 0) return;
 
@@ -152,16 +186,15 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
 
         return {
           'Beneficiary ID': b.id,
-          'Full Name': b.name,
+          'Masked Beneficiary Subject': maskBeneficiaryName(b.name),
           'Inuka Pillar': b.pillar,
           'Kenyan County': b.county || 'Nairobi',
           'Kenyan Region': b.region,
-          'Application Timestamp': b.applied_at,
-          'Current Lifecycle Stage': formatStageLabel(b.current_stage),
+          'Application Timestamp': formatDateTime(b.applied_at),
           'Active Consents Count': activeConsents.length,
           'Authorized Purposes': activePurposes,
           'Total Consent Records': benConsents.length,
-          'Governance Standard': 'KDPA 2019 Certified',
+          'Governance Standard': 'Internal Use — KDPA 2019 Sec 25 Pseudonymized',
         };
       });
 
@@ -170,16 +203,15 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
       // Auto-fit column widths
       worksheet['!cols'] = [
         { wch: 18 }, // Beneficiary ID
-        { wch: 24 }, // Full Name
+        { wch: 28 }, // Masked Beneficiary Subject
         { wch: 16 }, // Inuka Pillar
         { wch: 18 }, // Kenyan County
         { wch: 18 }, // Kenyan Region
         { wch: 26 }, // Application Timestamp
-        { wch: 24 }, // Current Lifecycle Stage
         { wch: 22 }, // Active Consents Count
         { wch: 32 }, // Authorized Purposes
         { wch: 22 }, // Total Consent Records
-        { wch: 22 }, // Governance Standard
+        { wch: 45 }, // Governance Standard
       ];
 
       const workbook = XLSX.utils.book_new();
@@ -205,6 +237,210 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
       console.error('Error generating Excel file:', err);
     }
   };
+
+  // =========================================================================
+  // SCOPED SINGLE-RECORD IDENTITY REVEAL VIEW (Deliberate Lookup Path)
+  // =========================================================================
+  if (revealBeneficiaryId) {
+    const benConsents = targetBeneficiary ? consentsByBenId.get(targetBeneficiary.id) || [] : [];
+    const activeConsentsCount = benConsents.filter((c) => c.status === 'granted').length;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/90 shrink-0">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-[#006193] dark:text-[#91ccff] flex items-center justify-center border border-blue-200 dark:border-blue-800/60 shadow-xs">
+                <Eye className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-lg font-black text-[#231F20] dark:text-white tracking-tight">
+                    Beneficiary Identity Reveal — Single Record Access
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-blue-50 text-[#006193] dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                    {revealBeneficiaryId}
+                  </span>
+                </div>
+                <p className="text-xs text-[#58595B] dark:text-slate-400 font-medium mt-0.5">
+                  Deliberate individual identity lookup from live event audit trail.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setRevealBeneficiaryId(null)}
+                className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-[#231F20] dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Switch to full directory view"
+              >
+                <Users className="w-3.5 h-3.5 text-[#ED1C24]" /> View Full Directory
+              </button>
+              <button
+                onClick={onClose}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 overflow-y-auto space-y-4.5 flex-1 text-xs">
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mb-3" />
+                <span>Loading beneficiary identity record...</span>
+              </div>
+            ) : !targetBeneficiary ? (
+              <div className="p-10 text-center space-y-3">
+                <AlertCircle className="w-10 h-10 text-[#ED1C24] mx-auto" />
+                <h4 className="text-sm font-bold text-[#231F20] dark:text-white">
+                  Beneficiary Record Not Found
+                </h4>
+                <p className="text-xs text-[#58595B] dark:text-slate-400">
+                  No record with ID <strong className="font-mono">{revealBeneficiaryId}</strong> was located in the primary database.
+                </p>
+                <button
+                  onClick={() => setRevealBeneficiaryId(null)}
+                  className="px-4 py-2 bg-[#ED1C24] text-white rounded-xl text-xs font-bold hover:bg-[#C8102E] cursor-pointer"
+                >
+                  Browse Full Directory
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* KDPA Section 25 Scoped Access Notice */}
+                <div className="p-3.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 flex items-start gap-3 text-xs text-[#006193] dark:text-[#91ccff]">
+                  <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Deliberate Identity Lookup: </span>
+                    Revealing plaintext PII for individual record <strong className="font-mono font-bold text-[#231F20] dark:text-white">{targetBeneficiary.id}</strong>. In accordance with KDPA 2019 Section 25 purpose limitation, bulk roster browsing and mass export tools are suppressed during individual identity reveal.
+                  </div>
+                </div>
+
+                {/* Beneficiary Profile Card */}
+                <div className="p-4.5 rounded-xl bg-[#F4F5F7] dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2 pb-3 border-b border-slate-200 dark:border-slate-700">
+                    <div>
+                      <span className="font-mono text-[11px] font-bold text-[#ED1C24] dark:text-red-400 bg-red-50 dark:bg-red-950/60 px-2 py-0.5 rounded border border-red-200 dark:border-red-800">
+                        {targetBeneficiary.id}
+                      </span>
+                      <h3 className="text-xl font-black text-[#231F20] dark:text-white mt-1.5">
+                        {targetBeneficiary.name}
+                      </h3>
+                      <div className="text-[11px] text-[#58595B] dark:text-slate-400 mt-0.5">
+                        Applied: {formatDateTime(targetBeneficiary.applied_at)}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${getPillarBadgeClass(targetBeneficiary.pillar)}`}>
+                        {targetBeneficiary.pillar} Pillar
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                      <span className="text-[10px] uppercase font-bold text-[#58595B] dark:text-slate-400 block">Inuka Pillar</span>
+                      <span className="text-xs font-bold text-[#231F20] dark:text-white mt-0.5 block">
+                        {targetBeneficiary.pillar}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                      <span className="text-[10px] uppercase font-bold text-[#58595B] dark:text-slate-400 block">County & Region</span>
+                      <span className="text-xs font-bold text-[#231F20] dark:text-white mt-0.5 block flex items-center gap-1">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        {targetBeneficiary.county ? `${targetBeneficiary.county}, ${targetBeneficiary.region}` : targetBeneficiary.region}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                      <span className="text-[10px] uppercase font-bold text-[#58595B] dark:text-slate-400 block">Active Consents</span>
+                      <span className="text-xs font-bold text-[#ED1C24] dark:text-red-400 mt-0.5 block">
+                        {activeConsentsCount} of {benConsents.length} Granted
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Consent Records Section */}
+                <div className="space-y-2.5">
+                  <div className="text-xs font-bold uppercase tracking-wider text-[#58595B] dark:text-slate-400 flex items-center justify-between">
+                    <span>Digital Consent Records ({benConsents.length})</span>
+                    <span className="font-mono text-[11px] text-[#58595B]">
+                      Verified Statutory Mandates
+                    </span>
+                  </div>
+
+                  {benConsents.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-[#F4F5F7] dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-[#58595B] text-center">
+                      No digital consent records registered yet for this beneficiary.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {benConsents.map((c) => (
+                        <div
+                          key={c.id}
+                          className="p-3.5 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 space-y-1.5 shadow-xs"
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-bold text-[#231F20] dark:text-slate-100 flex items-center gap-1.5">
+                              <FileCheck className="w-3.5 h-3.5 text-[#ED1C24]" />
+                              {c.purpose.replace(/_/g, ' ')}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                c.status === 'granted'
+                                  ? 'bg-red-50 text-[#ED1C24] dark:bg-red-950 dark:text-red-300 border border-red-200 dark:border-red-800'
+                                  : c.status === 'requested'
+                                  ? 'bg-[#F4F5F7] text-[#231F20] dark:bg-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600'
+                                  : 'bg-[#F4F5F7] text-[#C8102E] dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800'
+                              }`}
+                            >
+                              {c.status}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between text-[11px] text-[#58595B] dark:text-slate-400 font-mono">
+                            <span>Record ID: {c.id}</span>
+                            {c.granted_at && <span>Granted: {formatDateTime(c.granted_at)}</span>}
+                            {c.revoked_at && <span className="text-[#C8102E]">Revoked: {formatDateTime(c.revoked_at)}</span>}
+                            {c.expires_at && !c.revoked_at && <span>Expires: {formatDateTime(c.expires_at)}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Reveal Footer */}
+          <div className="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 flex items-center justify-between text-xs text-[#58595B] dark:text-slate-400 shrink-0">
+            <span className="flex items-center gap-1.5 font-mono text-[11px]">
+              <Lock className="w-3.5 h-3.5 text-[#ED1C24]" /> Access logged under KDPA statutory compliance audit trail.
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setRevealBeneficiaryId(null)}
+                className="px-3 py-1.5 text-xs font-bold text-[#006193] dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                Switch to Full Directory <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-1.5 bg-[#ED1C24] hover:bg-[#C8102E] text-white rounded-xl text-xs font-bold cursor-pointer transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const startRecord = filteredBeneficiaries.length === 0 ? 0 : (validCurrentPage - 1) * pageSize + 1;
   const endRecord = Math.min(validCurrentPage * pageSize, filteredBeneficiaries.length);
@@ -236,25 +472,30 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={handleExportExcel}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 cursor-pointer ${
-                isExported
-                  ? 'bg-[#C8102E] text-white'
-                  : 'bg-[#ED1C24] hover:bg-[#C8102E] text-white'
-              }`}
-            >
-              {isExported ? (
-                <>
-                  <Check className="w-4 h-4" /> Exported (.xlsx)
-                </>
-              ) : (
-                <>
-                  <FileSpreadsheet className="w-4 h-4 text-white" /> Export Excel (.xlsx)
-                </>
-              )}
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col items-end gap-0.5">
+              <button
+                onClick={handleExportExcel}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 cursor-pointer ${
+                  isExported
+                    ? 'bg-[#C8102E] text-white'
+                    : 'bg-[#ED1C24] hover:bg-[#C8102E] text-white'
+                }`}
+              >
+                {isExported ? (
+                  <>
+                    <Check className="w-4 h-4" /> Exported (.xlsx)
+                  </>
+                ) : (
+                  <>
+                    <FileSpreadsheet className="w-4 h-4 text-white" /> Export Excel (.xlsx)
+                  </>
+                )}
+              </button>
+              <span className="text-[10px] text-[#58595B] dark:text-slate-400 font-mono">
+                KDPA §25 Pseudonymized Export
+              </span>
+            </div>
             <button
               onClick={onClose}
               className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
@@ -349,20 +590,6 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
                 </option>
               ))}
             </select>
-
-            {/* Stage Filter Dropdown */}
-            <select
-              value={selectedStage}
-              onChange={(e) => setSelectedStage(e.target.value)}
-              className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-[#231F20] dark:text-slate-200 text-xs font-medium rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#ED1C24] cursor-pointer"
-            >
-              <option value="ALL">All Lifecycle Milestones (6)</option>
-              {stages.map((s) => (
-                <option key={s} value={s}>
-                  {formatStageLabel(s)}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
 
@@ -385,7 +612,6 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
                     setSelectedPillar('ALL');
                     setSelectedRegion('ALL');
                     setSelectedCounty('ALL');
-                    setSelectedStage('ALL');
                   }}
                   className="mt-2 text-xs text-blue-600 dark:text-blue-400 underline font-medium cursor-pointer"
                 >
@@ -401,7 +627,6 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
                     <th className="py-3 px-4 whitespace-nowrap">Inuka Pillar</th>
                     <th className="py-3 px-4 whitespace-nowrap">County & Region</th>
                     <th className="py-3 px-4 whitespace-nowrap">Application Date</th>
-                    <th className="py-3 px-4 whitespace-nowrap">Current Stage</th>
                     <th className="py-3 px-4 whitespace-nowrap text-center">Active Consents</th>
                     <th className="py-3 px-4.5 whitespace-nowrap text-right">Action</th>
                   </tr>
@@ -445,11 +670,6 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
                         </td>
                         <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400 font-mono text-xs whitespace-nowrap">
                           {formatDateTime(b.applied_at)}
-                        </td>
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700">
-                            {formatStageLabel(b.current_stage)}
-                          </span>
                         </td>
                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
                           <span
@@ -524,10 +744,7 @@ export const BeneficiaryDirectoryModal: React.FC<BeneficiaryDirectoryModalProps>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-1.5 shadow-xs">
-                  <div className="text-[10px] text-[#58595B] uppercase font-bold">Current Lifecycle Stage</div>
-                  <div className="text-sm font-bold text-[#ED1C24]">
-                    {formatStageLabel(selectedBeneficiary.current_stage)}
-                  </div>
+                  <div className="text-[10px] text-[#58595B] uppercase font-bold">Enrolled Timestamp</div>
                   <div className="text-xs text-[#58595B] dark:text-slate-400">
                     Applied on {formatDateTime(selectedBeneficiary.applied_at)}
                   </div>

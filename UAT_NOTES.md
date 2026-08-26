@@ -15,14 +15,14 @@
 
 ## Scenario 1: Look Up Beneficiary Consent History & Gating
 
-**Test Objective:** Verify that an Inuka field officer can look up a beneficiary, review their digital consent status across all 3 purposes (`donor_reporting`, `internal_analytics`, `third_party_sharing`), and verify lifecycle stage milestones.
+**Test Objective:** Verify that an Inuka field officer can look up a beneficiary, review their digital consent status across all 3 purposes (`donor_reporting`, `internal_analytics`, `third_party_sharing`), and verify KDPA Section 25 masking.
 
 ### Steps Executed:
 1. Navigate to the **Consent Status Grid** view.
 2. Filter purpose by **"Donor Reporting"**.
 3. Click any active cell in the **"Vocational Pillar"** column to open the cohort drill-down modal.
 4. Select a beneficiary (e.g. `BEN-0015` or `Faith Nekesa`).
-5. Confirm that active granted timestamps, retention expiry dates, and lifecycle sequence milestones are clearly legible.
+5. Confirm that active granted timestamps, retention expiry dates, and pseudonymized identifiers are clearly legible.
 
 ### Acceptance Criteria:
 - [x] Clear indication of which purposes are currently active vs. requested vs. revoked.

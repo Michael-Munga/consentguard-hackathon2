@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import type { AnomalySeverity, ConsentPurpose, LifecycleStage, Pillar, Region } from '../../types/index.js';
+import type { AnomalySeverity, ConsentPurpose, Pillar, Region } from '../../types/index.js';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -10,16 +10,18 @@ export function formatDateTime(isoString?: string | null): string {
   if (!isoString) return '—';
   try {
     const d = new Date(isoString);
-    return d.toLocaleString('en-KE', {
+    if (isNaN(d.getTime())) return String(isoString);
+    return d.toLocaleString('en-US', {
+      year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
-      hour12: false,
+      hour12: true,
     });
   } catch {
-    return isoString;
+    return String(isoString);
   }
 }
 
@@ -27,13 +29,14 @@ export function formatDateOnly(isoString?: string | null): string {
   if (!isoString) return '—';
   try {
     const d = new Date(isoString);
-    return d.toLocaleDateString('en-KE', {
+    if (isNaN(d.getTime())) return String(isoString);
+    return d.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
     });
   } catch {
-    return isoString;
+    return String(isoString);
   }
 }
 
@@ -41,7 +44,7 @@ export function formatAuditDateTime(isoString?: string | null): string {
   if (!isoString) return '—';
   try {
     const d = new Date(isoString);
-    if (isNaN(d.getTime())) return isoString;
+    if (isNaN(d.getTime())) return String(isoString);
     return d.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -96,25 +99,6 @@ export function formatPurposeLabel(purpose: ConsentPurpose | string): string {
   }
 }
 
-export function formatStageLabel(stage: LifecycleStage | string): string {
-  switch (stage) {
-    case 'applied':
-      return '1. Applied';
-    case 'identity_verified':
-      return '2. Identity Verified';
-    case 'consent_requested':
-      return '3. Consent Requested';
-    case 'consent_granted':
-      return '4. Consent Granted';
-    case 'data_processed':
-      return '5. Data Processed';
-    case 'consent_reviewed':
-      return '6. Consent Reviewed';
-    default:
-      return stage.replace(/_/g, ' ');
-  }
-}
-
 export function getSeverityBadgeClass(severity: AnomalySeverity | string): string {
   switch (severity) {
     case 'critical':
@@ -142,3 +126,17 @@ export function getPillarBadgeClass(pillar: Pillar | string): string {
       return 'bg-[#F4F5F7] text-[#58595B] border-slate-300 dark:bg-[#231F20] dark:text-slate-300 dark:border-slate-700';
   }
 }
+
+export const REGION_COUNTIES: Record<string, string[]> = {
+  'Nairobi': ['Nairobi'],
+  'Central': ['Kiambu', 'Nyeri', "Murang'a", 'Kirinyaga', 'Nyandarua'],
+  'Coast': ['Mombasa', 'Kilifi', 'Kwale', 'Taita Taveta', 'Lamu'],
+  'Rift Valley': ['Nakuru', 'Uasin Gishu', 'Kajiado', 'Baringo', 'Narok', 'Kericho'],
+  'Western': ['Kakamega', 'Bungoma', 'Busia', 'Vihiga'],
+  'Nyanza': ['Kisumu', 'Siaya', 'Homa Bay', 'Kisii', 'Migori'],
+  'Eastern': ['Machakos', 'Kitui', 'Makueni', 'Meru', 'Embu'],
+  'North Eastern': ['Garissa', 'Wajir', 'Mandera']
+};
+
+export const ALL_COUNTIES = Object.values(REGION_COUNTIES).flat().sort();
+
