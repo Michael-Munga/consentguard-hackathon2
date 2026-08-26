@@ -389,10 +389,10 @@ router.get('/field/beneficiaries', requireStaffRole('field_officer'), (req: Requ
     }
 
     const beneficiaries = repo.getBeneficiariesByPillar(pillarScope);
-    const allConsents = repo.getAllConsents();
+    const pillarConsents = repo.getConsentsByPillar(pillarScope);
 
     const consentsByBen = new Map<string, ConsentRecord[]>();
-    for (const c of allConsents) {
+    for (const c of pillarConsents) {
       const list = consentsByBen.get(c.beneficiary_id) || [];
       list.push(c);
       consentsByBen.set(c.beneficiary_id, list);

@@ -119,6 +119,17 @@ export class DbRepository {
     return this.db.prepare('SELECT * FROM consent_records').all() as ConsentRecord[];
   }
 
+  getConsentsByPillar(pillar: Pillar): ConsentRecord[] {
+    return this.db
+      .prepare(`
+        SELECT c.*
+        FROM consent_records c
+        JOIN beneficiaries b ON c.beneficiary_id = b.id
+        WHERE b.pillar = ?
+      `)
+      .all(pillar) as ConsentRecord[];
+  }
+
   insertConsentRecord(c: ConsentRecord): void {
     this.db
       .prepare(
@@ -251,21 +262,23 @@ export class DbRepository {
       this.db.prepare('SELECT COUNT(*) as count FROM anomalies WHERE reviewed = 0').get() as any
     ).count;
 
-    const criticalAnomalies = (
-      this.db.prepare("SELECT COUNT(*) as count FROM anomalies WHERE severity = 'critical' AND reviewed = 0").get() as any
-    ).count;
-
-    const anomaliesBySeverity = {
-      critical: (this.db.prepare("SELECT COUNT(*) as count FROM anomalies WHERE severity = 'critical' AND reviewed = 0").get() as any).count,
-      medium: (this.db.prepare("SELECT COUNT(*) as count FROM anomalies WHERE severity = 'medium' AND reviewed = 0").get() as any).count,
-      low: (this.db.prepare("SELECT COUNT(*) as count FROM anomalies WHERE severity = 'low' AND reviewed = 0").get() as any).count,
-    };
+    const anomalyCounts = this.db.prepare(
+      'SELECT severity, COUNT(*) as count FROM anomalies WHERE reviewed = 0 GROUP BY severity'
+    ).all() as Array<{ severity: string; count: number }>;
+    
+    const anomaliesBySeverity = { critical: 0, medium: 0, low: 0 };
+    for (const row of anomalyCounts) {
+      if (row.severity in anomaliesBySeverity) {
+        (anomaliesBySeverity as any)[row.severity] = row.count;
+      }
+    }
+    const criticalAnomalies = anomaliesBySeverity.critical;
 
     const totalAccessEvents = (this.db.prepare('SELECT COUNT(*) as count FROM data_access_events').get() as any).count;
     const validAccessEvents = (this.db.prepare('SELECT COUNT(*) as count FROM data_access_events WHERE was_valid = 1').get() as any).count;
     const complianceRate = totalAccessEvents > 0 ? Number(((validAccessEvents / totalAccessEvents) * 100).toFixed(1)) : 100.0;
 
-    // Consent by Pillar
+    // Consent by Pillar (Single grouped query)
     const pillars: Pillar[] = ['Scholarship', 'Plus', 'Vocational', 'Tech'];
     const consentByPillar: Record<Pillar, any> = {
       Scholarship: { total: 0, granted: 0, requested: 0, revoked: 0, expired: 0, grant_rate: 0 },
@@ -274,32 +287,36 @@ export class DbRepository {
       Tech: { total: 0, granted: 0, requested: 0, revoked: 0, expired: 0, grant_rate: 0 },
     };
 
-    for (const p of pillars) {
-      const stats = this.db.prepare(`
-        SELECT 
-          COUNT(c.id) as total,
-          SUM(CASE WHEN c.status = 'granted' AND c.granted_at IS NOT NULL THEN 1 ELSE 0 END) as granted,
-          SUM(CASE WHEN c.status = 'requested' THEN 1 ELSE 0 END) as requested,
-          SUM(CASE WHEN c.status = 'revoked' THEN 1 ELSE 0 END) as revoked,
-          SUM(CASE WHEN c.status = 'expired' THEN 1 ELSE 0 END) as expired
-        FROM consent_records c
-        JOIN beneficiaries b ON c.beneficiary_id = b.id
-        WHERE b.pillar = ?
-      `).get(p) as any;
+    const pillarStatsRows = this.db.prepare(`
+      SELECT 
+        b.pillar,
+        COUNT(c.id) as total,
+        SUM(CASE WHEN c.status = 'granted' AND c.granted_at IS NOT NULL THEN 1 ELSE 0 END) as granted,
+        SUM(CASE WHEN c.status = 'requested' THEN 1 ELSE 0 END) as requested,
+        SUM(CASE WHEN c.status = 'revoked' THEN 1 ELSE 0 END) as revoked,
+        SUM(CASE WHEN c.status = 'expired' THEN 1 ELSE 0 END) as expired
+      FROM consent_records c
+      JOIN beneficiaries b ON c.beneficiary_id = b.id
+      GROUP BY b.pillar
+    `).all() as any[];
 
-      const total = stats.total || 0;
-      const granted = stats.granted || 0;
-      consentByPillar[p] = {
-        total,
-        granted,
-        requested: stats.requested || 0,
-        revoked: stats.revoked || 0,
-        expired: stats.expired || 0,
-        grant_rate: total > 0 ? Number(((granted / total) * 100).toFixed(1)) : 0,
-      };
+    for (const stats of pillarStatsRows) {
+      const p = stats.pillar as Pillar;
+      if (p in consentByPillar) {
+        const total = stats.total || 0;
+        const granted = stats.granted || 0;
+        consentByPillar[p] = {
+          total,
+          granted,
+          requested: stats.requested || 0,
+          revoked: stats.revoked || 0,
+          expired: stats.expired || 0,
+          grant_rate: total > 0 ? Number(((granted / total) * 100).toFixed(1)) : 0,
+        };
+      }
     }
 
-    // Consent by Region (8 Kenyan Regions)
+    // Consent by Region (8 Kenyan Regions - Single grouped query)
     const regions: Region[] = [
       'Central',
       'Coast',
@@ -321,23 +338,27 @@ export class DbRepository {
       Western: { total: 0, granted: 0, grant_rate: 0 },
     };
 
-    for (const r of regions) {
-      const stats = this.db.prepare(`
-        SELECT 
-          COUNT(c.id) as total,
-          SUM(CASE WHEN c.status = 'granted' AND c.granted_at IS NOT NULL THEN 1 ELSE 0 END) as granted
-        FROM consent_records c
-        JOIN beneficiaries b ON c.beneficiary_id = b.id
-        WHERE b.region = ?
-      `).get(r) as any;
+    const regionStatsRows = this.db.prepare(`
+      SELECT 
+        b.region,
+        COUNT(c.id) as total,
+        SUM(CASE WHEN c.status = 'granted' AND c.granted_at IS NOT NULL THEN 1 ELSE 0 END) as granted
+      FROM consent_records c
+      JOIN beneficiaries b ON c.beneficiary_id = b.id
+      GROUP BY b.region
+    `).all() as any[];
 
-      const total = stats.total || 0;
-      const granted = stats.granted || 0;
-      consentByRegion[r] = {
-        total,
-        granted,
-        grant_rate: total > 0 ? Number(((granted / total) * 100).toFixed(1)) : 0,
-      };
+    for (const stats of regionStatsRows) {
+      const r = stats.region as Region;
+      if (r in consentByRegion) {
+        const total = stats.total || 0;
+        const granted = stats.granted || 0;
+        consentByRegion[r] = {
+          total,
+          granted,
+          grant_rate: total > 0 ? Number(((granted / total) * 100).toFixed(1)) : 0,
+        };
+      }
     }
 
     // Pillar Anomaly Rates over recent 4 weeks
@@ -371,24 +392,30 @@ export class DbRepository {
       },
     };
 
-    // Calculate rates per pillar and week
+    const benCountsByPillar = Object.fromEntries(
+      (this.db.prepare('SELECT pillar, COUNT(*) as count FROM beneficiaries GROUP BY pillar').all() as any[]).map(r => [r.pillar, r.count])
+    );
+
+    const recentAnomalies = this.db.prepare(`
+      SELECT b.pillar, a.detected_at
+      FROM anomalies a
+      JOIN beneficiaries b ON a.beneficiary_id = b.id
+      WHERE a.detected_at >= ? AND a.detected_at <= ?
+    `).all(weekDateRanges['Week -3'].start, weekDateRanges['Current Week'].end) as any[];
+
     for (const week of weeks) {
       const { start: startDate, end: endDate } = weekDateRanges[week];
+      const startTime = new Date(startDate).getTime();
+      const endTime = new Date(endDate).getTime();
+
       const ratesForWeek: { pillar: Pillar; rate: number }[] = [];
       for (const pillar of pillars) {
-        const benCount = (
-          this.db.prepare('SELECT COUNT(*) as count FROM beneficiaries WHERE pillar = ?').get(pillar) as any
-        ).count;
-        const anomCount = (
-          this.db
-            .prepare(`
-              SELECT COUNT(a.id) as count 
-              FROM anomalies a 
-              JOIN beneficiaries b ON a.beneficiary_id = b.id 
-              WHERE b.pillar = ? AND a.detected_at >= ? AND a.detected_at < ?
-            `)
-            .get(pillar, startDate, endDate) as any
-        ).count;
+        const benCount = benCountsByPillar[pillar] || 0;
+        const anomCount = recentAnomalies.filter(a => {
+          if (a.pillar !== pillar) return false;
+          const t = new Date(a.detected_at).getTime();
+          return t >= startTime && t < endTime;
+        }).length;
 
         const rate = benCount > 0 ? Number(((anomCount / benCount) * 100).toFixed(2)) : 0;
         ratesForWeek.push({ pillar, rate });
@@ -414,7 +441,7 @@ export class DbRepository {
       }
     }
 
-    // Purpose Breakdown Data (Calculated from real consent_records)
+    // Purpose Breakdown Data (Calculated from real consent_records in 1 grouped query)
     const purposes: Array<'donor_reporting' | 'internal_analytics' | 'third_party_sharing'> = [
       'donor_reporting',
       'internal_analytics',
@@ -423,15 +450,17 @@ export class DbRepository {
     const consentsByPurpose: Record<string, { total: number; granted: number; grant_rate: number; share_percent: number }> = {};
     let totalGrantedPurposes = 0;
 
-    for (const purp of purposes) {
-      const pStats = this.db.prepare(`
-        SELECT
-          COUNT(id) as total,
-          SUM(CASE WHEN status = 'granted' AND granted_at IS NOT NULL AND (expires_at IS NULL OR expires_at > datetime('now')) THEN 1 ELSE 0 END) as granted
-        FROM consent_records
-        WHERE purpose = ?
-      `).get(purp) as any;
+    const purposeStatsRows = this.db.prepare(`
+      SELECT
+        purpose,
+        COUNT(id) as total,
+        SUM(CASE WHEN status = 'granted' AND granted_at IS NOT NULL AND (expires_at IS NULL OR expires_at > datetime('now')) THEN 1 ELSE 0 END) as granted
+      FROM consent_records
+      GROUP BY purpose
+    `).all() as any[];
 
+    for (const purp of purposes) {
+      const pStats = purposeStatsRows.find(r => r.purpose === purp);
       const pTotal = pStats?.total || 0;
       const pGranted = pStats?.granted || 0;
       totalGrantedPurposes += pGranted;
@@ -496,42 +525,53 @@ export class DbRepository {
     
     // Fully consented = all 3 purposes or donor + internal granted
     const fullyConsented = (this.db.prepare(`
-      SELECT COUNT(DISTINCT b.id) as count
-      FROM beneficiaries b
-      JOIN consent_records c1 ON b.id = c1.beneficiary_id AND c1.purpose = 'donor_reporting' AND c1.status = 'granted' AND c1.granted_at IS NOT NULL
-      JOIN consent_records c2 ON b.id = c2.beneficiary_id AND c2.purpose = 'internal_analytics' AND c2.status = 'granted' AND c2.granted_at IS NOT NULL
-      WHERE b.pillar = ?
+      SELECT COUNT(*) as count FROM (
+        SELECT b.id
+        FROM beneficiaries b
+        JOIN consent_records c ON b.id = c.beneficiary_id
+        WHERE b.pillar = ?
+        GROUP BY b.id
+        HAVING SUM(CASE WHEN c.status = 'granted' AND c.granted_at IS NOT NULL AND c.purpose IN ('donor_reporting', 'internal_analytics') THEN 1 ELSE 0 END) = 2
+      )
     `).get(pillar) as any).count;
 
     const actionRequired = (this.db.prepare(`
-      SELECT COUNT(DISTINCT b.id) as count
-      FROM beneficiaries b
-      LEFT JOIN consent_records c ON b.id = c.beneficiary_id AND c.status = 'granted' AND c.granted_at IS NOT NULL
-      WHERE b.pillar = ? AND (c.id IS NULL OR b.id IN (
-        SELECT beneficiary_id FROM consent_records WHERE status IN ('revoked', 'expired')
-      ))
+      SELECT COUNT(*) as count FROM (
+        SELECT b.id
+        FROM beneficiaries b
+        JOIN consent_records c ON b.id = c.beneficiary_id
+        WHERE b.pillar = ?
+        GROUP BY b.id
+        HAVING SUM(CASE WHEN c.status = 'granted' AND c.granted_at IS NOT NULL THEN 1 ELSE 0 END) < 2
+            OR SUM(CASE WHEN c.status IN ('revoked', 'expired') THEN 1 ELSE 0 END) > 0
+      )
     `).get(pillar) as any).count;
 
-    // Consent status by purpose for this pillar
+    // Consent status by purpose for this pillar (1 single query grouped by purpose)
     const purposes: { name: string; purpose: string; description: string }[] = [
       { name: 'Donor Reporting & Progress', purpose: 'donor_reporting', description: 'Consent to share pseudonymized progress reports and milestone data with program sponsors and donors.' },
       { name: 'Internal Analytics & M&E', purpose: 'internal_analytics', description: 'Consent for the Foundation’s internal monitoring, evaluation, and cohort performance analytics.' },
       { name: 'Third-Party Partner Sharing', purpose: 'third_party_sharing', description: 'Consent to share pseudonymized beneficiary data with vetted external institutional partners.' },
     ];
 
-    const purposeBreakdown = purposes.map(p => {
-      const stats = this.db.prepare(`
-        SELECT
-          COUNT(c.id) as total,
-          SUM(CASE WHEN c.status = 'granted' AND c.granted_at IS NOT NULL THEN 1 ELSE 0 END) as granted,
-          SUM(CASE WHEN c.status = 'requested' THEN 1 ELSE 0 END) as pending,
-          SUM(CASE WHEN c.status IN ('revoked', 'expired') THEN 1 ELSE 0 END) as revoked
-        FROM consent_records c
-        JOIN beneficiaries b ON c.beneficiary_id = b.id
-        WHERE b.pillar = ? AND c.purpose = ?
-      `).get(pillar, p.purpose) as any;
+    const statsRows = this.db.prepare(`
+      SELECT
+        c.purpose,
+        COUNT(c.id) as total,
+        SUM(CASE WHEN c.status = 'granted' AND c.granted_at IS NOT NULL THEN 1 ELSE 0 END) as granted,
+        SUM(CASE WHEN c.status = 'requested' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN c.status IN ('revoked', 'expired') THEN 1 ELSE 0 END) as revoked
+      FROM consent_records c
+      JOIN beneficiaries b ON c.beneficiary_id = b.id
+      WHERE b.pillar = ?
+      GROUP BY c.purpose
+    `).all(pillar) as any[];
 
-      const total = totalBeneficiaries || 1;
+    const statsMap = Object.fromEntries(statsRows.map(r => [r.purpose, r]));
+    const total = totalBeneficiaries || 1;
+
+    const purposeBreakdown = purposes.map(p => {
+      const stats = statsMap[p.purpose] || { granted: 0, pending: 0, revoked: 0 };
       const granted = stats.granted || 0;
       const pending = stats.pending || 0;
       const revoked = stats.revoked || 0;
@@ -592,25 +632,29 @@ export class DbRepository {
       WHERE status = 'revoked' AND revoked_at >= datetime('now', '-30 days')
     `).get() as any).count;
 
-    // Real per-pillar consent grant rates from consent_records joined to beneficiaries
+    // Real per-pillar consent grant rates using single grouped queries
     const pillars: Pillar[] = ['Scholarship', 'Plus', 'Vocational', 'Tech'];
-    const pillarCoverage = pillars.map(pillarName => {
-      const totalPillarBens = (this.db.prepare(
-        'SELECT COUNT(*) as count FROM beneficiaries WHERE pillar = ?'
-      ).get(pillarName) as any)?.count || 0;
-
-      const grantedInPillar = (this.db.prepare(`
-        SELECT COUNT(DISTINCT c.beneficiary_id) as count
+    const totalPillarCounts = Object.fromEntries(
+      (this.db.prepare('SELECT pillar, COUNT(*) as count FROM beneficiaries GROUP BY pillar').all() as any[]).map(r => [r.pillar, r.count])
+    );
+    const grantedInPillarCounts = Object.fromEntries(
+      (this.db.prepare(`
+        SELECT b.pillar, COUNT(DISTINCT c.beneficiary_id) as count
         FROM consent_records c
         JOIN beneficiaries b ON c.beneficiary_id = b.id
-        WHERE b.pillar = ? AND c.status = 'granted' AND c.granted_at IS NOT NULL
-      `).get(pillarName) as any)?.count || 0;
+        WHERE c.status = 'granted' AND c.granted_at IS NOT NULL
+        GROUP BY b.pillar
+      `).all() as any[]).map(r => [r.pillar, r.count])
+    );
 
+    const pillarCoverage = pillars.map(pillarName => {
+      const totalPillarBens = totalPillarCounts[pillarName] || 0;
+      const grantedInPillar = grantedInPillarCounts[pillarName] || 0;
       const rate = totalPillarBens > 0 ? Math.round((grantedInPillar / totalPillarBens) * 100) : 0;
       return { name: pillarName, rate };
     });
 
-    // Real regional distribution across the 8 Kenyan regions
+    // Real regional distribution across the 8 Kenyan regions in 1 grouped query
     const regions: Region[] = [
       'Central',
       'Coast',
@@ -621,14 +665,18 @@ export class DbRepository {
       'Rift Valley',
       'Western',
     ];
-    const regionalDistribution = regions.map(regionName => {
-      const regionActiveConsents = (this.db.prepare(`
-        SELECT COUNT(DISTINCT c.beneficiary_id) as count
+    const regionalCounts = Object.fromEntries(
+      (this.db.prepare(`
+        SELECT b.region, COUNT(DISTINCT c.beneficiary_id) as count
         FROM consent_records c
         JOIN beneficiaries b ON c.beneficiary_id = b.id
-        WHERE b.region = ? AND c.status = 'granted' AND c.granted_at IS NOT NULL
-      `).get(regionName) as any)?.count || 0;
+        WHERE c.status = 'granted' AND c.granted_at IS NOT NULL
+        GROUP BY b.region
+      `).all() as any[]).map(r => [r.region, r.count])
+    );
 
+    const regionalDistribution = regions.map(regionName => {
+      const regionActiveConsents = regionalCounts[regionName] || 0;
       const percentage = optInCount > 0 ? Math.round((regionActiveConsents / optInCount) * 100) : 0;
       return { framework: regionName, percentage };
     });
@@ -686,7 +734,7 @@ export class DbRepository {
           { reason: 'Third-Party Partner Sharing', percentage: 0 },
         ];
 
-    // Real regional compliance aggregates across the 8 Kenyan regions
+    // Real regional compliance aggregates across the 8 Kenyan regions in 1 single grouped query
     const regions: Region[] = [
       'Central',
       'Coast',
@@ -698,27 +746,24 @@ export class DbRepository {
       'Western',
     ];
 
+    const regStatsRows = this.db.prepare(`
+      SELECT 
+        b.region,
+        COUNT(c.id) as total,
+        SUM(CASE WHEN c.status = 'granted' AND c.granted_at IS NOT NULL AND (c.expires_at IS NULL OR c.expires_at > datetime('now')) THEN 1 ELSE 0 END) as active,
+        SUM(CASE WHEN c.status = 'granted' AND c.granted_at >= datetime('now', '-30 days') THEN 1 ELSE 0 END) as net_new_30d
+      FROM consent_records c
+      JOIN beneficiaries b ON c.beneficiary_id = b.id
+      GROUP BY b.region
+    `).all() as any[];
+
+    const regStatsMap = Object.fromEntries(regStatsRows.map(r => [r.region, r]));
+
     const regionalCompliance = regions.map(reg => {
-      const regActive = (this.db.prepare(`
-        SELECT COUNT(*) as count
-        FROM consent_records c
-        JOIN beneficiaries b ON c.beneficiary_id = b.id
-        WHERE b.region = ? AND c.status = 'granted' AND c.granted_at IS NOT NULL AND (c.expires_at IS NULL OR c.expires_at > datetime('now'))
-      `).get(reg) as any)?.count || 0;
-
-      const regTotal = (this.db.prepare(`
-        SELECT COUNT(*) as count
-        FROM consent_records c
-        JOIN beneficiaries b ON c.beneficiary_id = b.id
-        WHERE b.region = ?
-      `).get(reg) as any)?.count || 0;
-
-      const reg30DGrants = (this.db.prepare(`
-        SELECT COUNT(*) as count
-        FROM consent_records c
-        JOIN beneficiaries b ON c.beneficiary_id = b.id
-        WHERE b.region = ? AND c.status = 'granted' AND c.granted_at >= datetime('now', '-30 days')
-      `).get(reg) as any)?.count || 0;
+      const stats = regStatsMap[reg] || { active: 0, total: 0, net_new_30d: 0 };
+      const regActive = stats.active || 0;
+      const regTotal = stats.total || 0;
+      const reg30DGrants = stats.net_new_30d || 0;
 
       const grantRate = regTotal > 0 ? (regActive / regTotal) * 100 : 0;
       const status = grantRate >= 70 ? 'HEALTHY' : grantRate >= 50 ? 'MONITOR' : 'ACTION REQUIRED';
